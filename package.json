@@ -78,6 +78,11 @@
           "default": "openid profile email offline_access urn:zitadel:iam:org:project:id:368173150459965108:aud",
           "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:…:aud scope is load-bearing — without it the token is valid everywhere except at the operator."
         },
+        "airdress.dev.allowLocalhost": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow 'localhost' as a profile target for local operator development. Profiles created this way are marked as dev profiles and the status bar shows the dev state."
+        },
         "airdress.requestTimeoutMs": {
           "type": "number",
           "default": 15000,
