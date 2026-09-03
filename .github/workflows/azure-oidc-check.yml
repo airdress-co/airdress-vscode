@@ -1,0 +1,28 @@
+# Diagnostic: verify the Entra federated credential end to end and print the
+# Azure DevOps profile id of the managed identity — the ONLY id the
+# Marketplace publisher-member search recognises (SPEC-057 design §2.1 trap 2,
+# RB-064). Dispatch-only; also serves as the OIDC smoke test before a release.
+name: Azure OIDC check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  profile-id:
+    runs-on: ubuntu-latest
+    environment: marketplace-publish
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Azure DevOps profile id (publisher-member search id)
+        run: |
+          az rest -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798
