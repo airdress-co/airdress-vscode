@@ -3,6 +3,9 @@ import { ResourceTreeProvider } from "./tree/provider";
 import { ProfileStore } from "./profiles/store";
 import { addProfile, createStatusBar, pickProfile } from "./profiles/picker";
 import { promptForBearer } from "./auth/bearer";
+import { AIRDRESS_SCHEME, LiveManifestProvider } from "./manifests/virtual";
+import { diffAgainstLive, type ManifestDeps } from "./manifests/diff";
+import { applyManifest, validateCommand } from "./manifests/apply";
 import { CallbackRouter } from "./auth/zitadel";
 import { SecretStore } from "./auth/store";
 import { AuthManager } from "./auth/manager";
@@ -25,6 +28,12 @@ export function activate(context: vscode.ExtensionContext): void {
   const auth = new AuthManager(new SecretStore(context.secrets));
   const tree = new ResourceTreeProvider(profiles);
   const statusBar = createStatusBar(profiles);
+  const liveProvider = new LiveManifestProvider();
+  const manifestDeps: ManifestDeps = {
+    profiles,
+    auth,
+    provider: liveProvider,
+  };
 
   context.subscriptions.push(
     statusBar.item,
@@ -95,11 +104,24 @@ export function activate(context: vscode.ExtensionContext): void {
       tree.refresh();
     }),
 
+    vscode.workspace.registerTextDocumentContentProvider(
+      AIRDRESS_SCHEME,
+      liveProvider,
+    ),
+
     vscode.commands.registerCommand("airdress.manifests.diff", async () => {
-      // TODO(SPEC-057 T6-05): fetch live manifest -> virtual doc -> vscode.diff.
-      void vscode.window.showInformationMessage(
-        "Airdress: manifest diff is not implemented yet.",
-      );
+      await diffAgainstLive(manifestDeps);
+    }),
+
+    vscode.commands.registerCommand("airdress.manifests.validate", async () => {
+      await validateCommand();
+    }),
+
+    // Apply is a deliberate command — deliberately NOT bound to any
+    // save event (design §5.2); a test asserts the bundle registers no
+    // save listener.
+    vscode.commands.registerCommand("airdress.manifests.apply", async () => {
+      await applyManifest(manifestDeps);
     }),
   );
 }
