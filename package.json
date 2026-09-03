@@ -1,0 +1,113 @@
+{
+  "name": "airdress-vscode",
+  "displayName": "Airdress",
+  "description": "Operator profiles, manifest validation, and resource browsing for airdress operators (SPEC-057)",
+  "version": "0.0.1",
+  "publisher": "airdress",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/airdress-co/airdress-vscode.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "airdress.profiles.add",
+        "title": "Airdress: Add Operator Profile"
+      },
+      {
+        "command": "airdress.profiles.pick",
+        "title": "Airdress: Switch Operator Profile"
+      },
+      {
+        "command": "airdress.profiles.signOut",
+        "title": "Airdress: Sign Out of Profile"
+      },
+      {
+        "command": "airdress.resources.refresh",
+        "title": "Airdress: Refresh Resources",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "airdress.manifests.diff",
+        "title": "Airdress: Diff Manifest Against Live"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "airdress",
+          "title": "Airdress",
+          "icon": "$(radio-tower)"
+        }
+      ]
+    },
+    "views": {
+      "airdress": [
+        {
+          "id": "airdress.resources",
+          "name": "Resources"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Airdress",
+      "properties": {
+        "airdress.requestTimeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "description": "Timeout in milliseconds for operator API requests."
+        },
+        "airdress.telemetry.traceHeader": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send x-airdress-trace: 1 on requests to force-sample server-side traces."
+        }
+      }
+    },
+    "yamlValidation": [
+      {
+        "fileMatch": "*.airdress.yaml",
+        "url": "./schemas/fleet-manifest.schema.json"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "*.airdress.json",
+        "url": "./schemas/fleet-manifest.schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src && prettier --check .",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "pretest": "npm run compile-tests && npm run compile",
+    "test": "vscode-test",
+    "package": "npm run compile && vsce package --no-git-tag-version"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.30.0",
+    "ovsx": "^0.10.4",
+    "prettier": "^3.6.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.35.0"
+  }
+}

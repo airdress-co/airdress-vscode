@@ -1,0 +1,6 @@
+dist/
+out/
+node_modules/
+src/api/generated/
+*.vsix
+package-lock.json

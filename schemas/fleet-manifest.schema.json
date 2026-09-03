@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://airdress.co/schemas/fleet-manifest.schema.json",
+  "title": "Airdress fleet VM manifest (SPEC-047)",
+  "description": "Validate-only stub (FR-32). TODO(SPEC-057 T6-07): mirror the fields consumed by infra/operator-fleet/manifests/*.toml.",
+  "type": "object",
+  "additionalProperties": true
+}
