@@ -5,13 +5,13 @@
 # both OIDC paths — never add one (RB-065).
 name: Release
 
+# Dispatch-only by owner decision (2026-09-04): publishing to two public
+# registries is a deliberate act, never a side effect of pushing a tag.
 on:
-  push:
-    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re-)publish, e.g. v0.0.1-alpha.1"
+        description: "Existing tag to publish, e.g. v0.0.1-alpha.1"
         required: true
         type: string
 
@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -33,7 +33,7 @@ jobs:
       - run: npm ci
       - name: Verify tag matches package.json version
         run: |
-          tag="${{ inputs.tag || github.ref_name }}"
+          tag="${{ inputs.tag }}"
           pkg="v$(node -p "require('./package.json').version")"
           if [ "$tag" != "$pkg" ]; then
             echo "::error::tag $tag != package.json $pkg — bump the version before tagging"
@@ -94,6 +94,6 @@ jobs:
           name: vsix
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ inputs.tag }}
           files: "*.vsix"
           generate_release_notes: true

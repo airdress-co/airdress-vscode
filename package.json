@@ -109,5 +109,9 @@
     "prettier": "^3.6.0",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.35.0"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.5",
+    "diff": "^8.0.3"
   }
 }
