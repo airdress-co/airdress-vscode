@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { ResourceTreeProvider } from "./tree/provider";
 import { ProfileStore } from "./profiles/store";
-import { pickProfile } from "./profiles/picker";
+import { addProfile, createStatusBar, pickProfile } from "./profiles/picker";
+import { promptForBearer } from "./auth/bearer";
 import { CallbackRouter } from "./auth/zitadel";
 import { SecretStore } from "./auth/store";
 import { AuthManager } from "./auth/manager";
@@ -23,17 +24,45 @@ export function activate(context: vscode.ExtensionContext): void {
   const profiles = new ProfileStore(context.globalState);
   const auth = new AuthManager(new SecretStore(context.secrets));
   const tree = new ResourceTreeProvider(profiles);
+  const statusBar = createStatusBar(profiles);
 
   context.subscriptions.push(
+    statusBar.item,
+    profiles.onDidChange(() => {
+      statusBar.refresh();
+      tree.refresh();
+    }),
+
     vscode.window.registerUriHandler(callbackRouter),
 
     vscode.window.registerTreeDataProvider("airdress.resources", tree),
 
     vscode.commands.registerCommand("airdress.profiles.add", async () => {
-      // TODO(SPEC-057 T6-01): profile creation flow (FQDN validation per FR-25).
-      void vscode.window.showInformationMessage(
-        "Airdress: profile creation is not implemented yet.",
-      );
+      const profile = await addProfile(profiles);
+      if (!profile) {
+        return;
+      }
+      // Offer the matching credential entry immediately; both flows are
+      // cancellable — a profile without a credential is fine.
+      try {
+        if (profile.authMode === "zitadel") {
+          await auth.signInZitadel(profile.id, callbackRouter);
+          void vscode.window.showInformationMessage(
+            `Airdress: signed in to ${profile.label}.`,
+          );
+        } else {
+          const bearer = await promptForBearer();
+          if (bearer) {
+            await auth.setBearer(profile.id, bearer);
+          }
+        }
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          `Airdress: sign-in for ${profile.label} failed — ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }),
 
     vscode.commands.registerCommand("airdress.profiles.pick", async () => {
