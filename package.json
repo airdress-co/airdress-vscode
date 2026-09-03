@@ -40,7 +40,17 @@
       },
       {
         "command": "airdress.manifests.diff",
-        "title": "Airdress: Diff Manifest Against Live"
+        "title": "Airdress: Diff Manifest Against Live",
+        "enablement": "editorLangId == yaml || editorLangId == json"
+      },
+      {
+        "command": "airdress.manifests.validate",
+        "title": "Airdress: Validate Manifest"
+      },
+      {
+        "command": "airdress.manifests.apply",
+        "title": "Airdress: Apply Manifest to Operator",
+        "enablement": "editorLangId == yaml || editorLangId == json"
       }
     ],
     "viewsContainers": {
@@ -136,5 +146,9 @@
   "overrides": {
     "serialize-javascript": "^7.0.5",
     "diff": "^8.0.3"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "yaml": "^2.9.0"
   }
 }
