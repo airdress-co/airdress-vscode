@@ -7,8 +7,17 @@ const ACTIVE_KEY = "airdress.activeProfileId";
 /**
  * Profile persistence in globalState.
  *
- * `setKeysForSync` is deliberately NOT called — profiles reference
- * per-machine credentials and must not roam (design §4.5).
+ * `setKeysForSync` is deliberately NOT called (design §4.5): Settings
+ * Sync would replicate the list of operators a person owns to every
+ * machine signed into their Microsoft/GitHub account. The tokens would
+ * not travel, but the inventory would — and an inventory of operator
+ * FQDNs is exactly the reconnaissance a targeted attacker wants. This
+ * is a decision, not an omission; the opposite decision is defensible
+ * but must be made deliberately.
+ *
+ * Profile records are non-secret metadata ONLY. Credentials live in
+ * SecretStorage via auth/store.ts — never in globalState, never in
+ * settings.json, never in workspace state (FR-21).
  */
 export class ProfileStore {
   constructor(private readonly state: vscode.Memento) {}

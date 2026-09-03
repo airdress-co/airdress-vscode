@@ -3,6 +3,8 @@ import { ResourceTreeProvider } from "./tree/provider";
 import { ProfileStore } from "./profiles/store";
 import { pickProfile } from "./profiles/picker";
 import { CallbackRouter } from "./auth/zitadel";
+import { SecretStore } from "./auth/store";
+import { AuthManager } from "./auth/manager";
 
 /**
  * Singleton auth-callback dispatcher. VS Code allows one UriHandler per
@@ -19,6 +21,7 @@ export const callbackRouter = new CallbackRouter();
  */
 export function activate(context: vscode.ExtensionContext): void {
   const profiles = new ProfileStore(context.globalState);
+  const auth = new AuthManager(new SecretStore(context.secrets));
   const tree = new ResourceTreeProvider(profiles);
 
   context.subscriptions.push(
@@ -38,9 +41,24 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     vscode.commands.registerCommand("airdress.profiles.signOut", async () => {
-      // TODO(SPEC-057 T6-02): clear SecretStorage entries for the active profile.
+      // Explicit profile resolution — no ambient default (NFR-8).
+      const all = profiles.list();
+      if (all.length === 0) {
+        void vscode.window.showInformationMessage(
+          "Airdress: there are no profiles to sign out of.",
+        );
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(
+        all.map((p) => ({ label: p.label, description: p.fqdn, id: p.id })),
+        { placeHolder: "Sign out of which operator profile?" },
+      );
+      if (!picked) {
+        return;
+      }
+      await auth.signOut(picked.id);
       void vscode.window.showInformationMessage(
-        "Airdress: sign-out is not implemented yet.",
+        `Airdress: signed out of ${picked.label}.`,
       );
     }),
 
