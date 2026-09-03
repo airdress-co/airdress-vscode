@@ -16,6 +16,9 @@
     "Other"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "onUri"
+  ],
   "contributes": {
     "commands": [
       {
@@ -60,6 +63,21 @@
     "configuration": {
       "title": "Airdress",
       "properties": {
+        "airdress.auth.issuer": {
+          "type": "string",
+          "default": "https://airdress-co-tffhig.us1.zitadel.cloud",
+          "description": "ZITADEL issuer URL for OIDC sign-in."
+        },
+        "airdress.auth.clientId": {
+          "type": "string",
+          "default": "389189092820182216",
+          "description": "ZITADEL native public client ID (PKCE only — there is no client secret)."
+        },
+        "airdress.auth.scopes": {
+          "type": "string",
+          "default": "openid profile email offline_access urn:zitadel:iam:org:project:id:368173150459965108:aud",
+          "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:…:aud scope is load-bearing — without it the token is valid everywhere except at the operator."
+        },
         "airdress.requestTimeoutMs": {
           "type": "number",
           "default": 15000,

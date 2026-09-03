@@ -2,6 +2,13 @@ import * as vscode from "vscode";
 import { ResourceTreeProvider } from "./tree/provider";
 import { ProfileStore } from "./profiles/store";
 import { pickProfile } from "./profiles/picker";
+import { CallbackRouter } from "./auth/zitadel";
+
+/**
+ * Singleton auth-callback dispatcher. VS Code allows one UriHandler per
+ * extension; sign-in flows await their pending state on this router.
+ */
+export const callbackRouter = new CallbackRouter();
 
 /**
  * Extension entry point.
@@ -15,6 +22,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const tree = new ResourceTreeProvider(profiles);
 
   context.subscriptions.push(
+    vscode.window.registerUriHandler(callbackRouter),
+
     vscode.window.registerTreeDataProvider("airdress.resources", tree),
 
     vscode.commands.registerCommand("airdress.profiles.add", async () => {
