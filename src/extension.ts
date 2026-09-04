@@ -15,6 +15,7 @@ import {
   classifyBearer,
 } from "./auth/breakGlass";
 import { runbookUrl } from "./principals/admin";
+import { addOpenFileToMapping, detectWorkspaceDrift } from "./drift/commands";
 import { AIRDRESS_SCHEME, LiveManifestProvider } from "./manifests/virtual";
 import { diffAgainstLive, type ManifestDeps } from "./manifests/diff";
 import { applyManifest, validateCommand } from "./manifests/apply";
@@ -425,6 +426,16 @@ export function activate(context: vscode.ExtensionContext): void {
         );
       },
     ),
+
+    // Drift: an explicit mapping plus a scan that reports and offers
+    // diffs — no code path from a scan result to a write exists.
+    vscode.commands.registerCommand("airdress.drift.addOpenFile", async () => {
+      await addOpenFileToMapping(manifestDeps);
+    }),
+
+    vscode.commands.registerCommand("airdress.drift.scan", async () => {
+      await detectWorkspaceDrift(manifestDeps);
+    }),
 
     // Break-glass has an EXIT, one click away — and no mint action:
     // owner-token minting requires being on the operator's host.
