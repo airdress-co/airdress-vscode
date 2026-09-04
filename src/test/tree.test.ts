@@ -85,6 +85,7 @@ function fetchers(overrides?: Partial<TreeFetchers>): TreeFetchers {
     listEnrollments: async () => [
       { id: "e1", createdAt: "2026-09-01T00:00:00Z" },
     ],
+    getStatus: async () => ({ ready: true, state: "Ready" }),
     ...overrides,
   };
 }

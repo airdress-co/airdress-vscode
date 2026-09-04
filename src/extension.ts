@@ -14,7 +14,9 @@ import { applyManifest, validateCommand } from "./manifests/apply";
 import { CallbackRouter } from "./auth/zitadel";
 import { SecretStore } from "./auth/store";
 import { AuthManager } from "./auth/manager";
-import { liveFetchers } from "./tree/fetchers";
+import { liveFetchers, pingFetcher } from "./tree/fetchers";
+import { HealthPoller } from "./health/poller";
+import { StatusCache } from "./health/statusCache";
 import type { TreeNodeData } from "./tree/nodes";
 import { clientFor } from "./manifests/diff";
 import * as YAML from "yaml";
@@ -44,13 +46,40 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   const fetchers = liveFetchers(manifestDeps);
 
-  const operatorsTree = new OperatorsTreeProvider(profiles, (node) =>
-    auth.hasCredential({
-      id: node.profile.id,
-      authMode: node.profile.authMode,
-    }),
+  // Health: liveness polled from the operator's own /v1/ping (active
+  // profile only, only while the Operators view is visible);
+  // correctness rolled up from the status cache the Resources view
+  // fills. This extension reads ONLY the operator's owner-facing API —
+  // fleet infrastructure is out of reach by design, and a test
+  // enforces that no such call exists.
+  const statusCache = new StatusCache();
+  const poller = new HealthPoller({
+    ping: pingFetcher(manifestDeps),
+    intervalMs: () =>
+      1000 *
+      vscode.workspace
+        .getConfiguration("airdress")
+        .get<number>("health.intervalSeconds", 60),
+  });
+
+  const operatorsTree = new OperatorsTreeProvider(
+    profiles,
+    (node) =>
+      auth.hasCredential({
+        id: node.profile.id,
+        authMode: node.profile.authMode,
+      }),
+    {
+      livenessFor: (profileId) => poller.livenessFor(profileId),
+      correctnessFor: (profileId) => statusCache.correctnessFor(profileId),
+    },
   );
-  const resourcesTree = new ResourcesTreeProvider(profiles, fetchers);
+  const resourcesTree = new ResourcesTreeProvider(
+    profiles,
+    fetchers,
+    statusCache,
+    () => operatorsTree.refresh(),
+  );
   const principalsTree = new PrincipalsTreeProvider(profiles, fetchers);
   const ownership = new OwnershipTracker((profile) =>
     fetchers.listPrincipals(profile),
@@ -99,17 +128,36 @@ export function activate(context: vscode.ExtensionContext): void {
     principalsTree.refresh();
   }
 
+  const syncPollerProfile = () => {
+    const id = profiles.activeId();
+    poller.setActiveProfile(id ? profiles.get(id) : undefined);
+  };
+  syncPollerProfile();
+  poller.setVisible(operatorsView.visible);
+
   context.subscriptions.push(
     statusBar.item,
     operatorsView,
     resourcesView,
     principalsView,
+    poller,
+    poller.onDidUpdate(() => operatorsTree.refresh()),
     profiles.onDidChange(() => {
       statusBar.refresh();
       refreshAllViews();
+      syncPollerProfile();
       void updatePrincipalsContext();
     }),
-    operatorsView.onDidChangeVisibility(() => void updatePrincipalsContext()),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("airdress.health.intervalSeconds")) {
+        poller.restart();
+      }
+    }),
+    operatorsView.onDidChangeVisibility(() => {
+      // Hiding the view stops ALL health traffic.
+      poller.setVisible(operatorsView.visible);
+      void updatePrincipalsContext();
+    }),
     resourcesView.onDidChangeVisibility(() => void updatePrincipalsContext()),
 
     vscode.window.registerUriHandler(callbackRouter),
@@ -185,6 +233,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("airdress.resources.refresh", () => {
       ownership.invalidate();
+      statusCache.clear();
       refreshAllViews();
       void updatePrincipalsContext();
     }),
