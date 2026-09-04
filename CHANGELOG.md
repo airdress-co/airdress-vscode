@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.0](https://github.com/airdress-co/airdress-vscode/compare/v0.0.2...v0.1.0) (2026-09-04)
+
+
+### Features
+
+* break-glass status-bar indicator, with no mint path by design ([e74d151](https://github.com/airdress-co/airdress-vscode/commit/e74d151addd09e8b4aa403ab239438b4b07d55ff))
+* principal administration — create, revoke, metadata, identity bind ([81cbcdf](https://github.com/airdress-co/airdress-vscode/commit/81cbcdf61def40861d75d9b1d1b0ce79edf2ea27))
+* split the sidebar into Operators, Resources and Principals views, add scoped apply ([e3d1d14](https://github.com/airdress-co/airdress-vscode/commit/e3d1d143ba2179a1b92686daf6accf8c8d037929))
+* two-axis operator health with bounded polling ([f3db8e6](https://github.com/airdress-co/airdress-vscode/commit/f3db8e6fa161209a25d751b415158c3ca1e5a56a))
+* workspace drift detection over an explicit manifest mapping ([d68db0a](https://github.com/airdress-co/airdress-vscode/commit/d68db0aeca9001fb02cf94df69fe69e1bd7371fb))
+
+
+### Bug Fixes
+
+* restructure a test needle the spell checker rejects ([26ad9ed](https://github.com/airdress-co/airdress-vscode/commit/26ad9ed0334d32d515685fd397471e1c8bdf00f4))
+* reword a term the spell checker rejects ([eeea655](https://github.com/airdress-co/airdress-vscode/commit/eeea655ad0164d6bc9ad5c456a9b698dc0fc9662))
+* reword and restructure terms the CI spell checker rejects ([7be98ed](https://github.com/airdress-co/airdress-vscode/commit/7be98edf87ebbe464c5239d6aff20a22e9c8f2ef))
+
 ## 0.0.2 — 2026-09-04
 
 - Marketplace listing inherits the canonical Airdress brand: icon
