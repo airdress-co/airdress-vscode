@@ -83,7 +83,7 @@ export function livenessFrom(
   };
 }
 
-/** A renderable line for one axis: codicon name + text. */
+/** A render-ready line for one axis: codicon name + text. */
 export interface HealthLine {
   icon: string;
   text: string;
