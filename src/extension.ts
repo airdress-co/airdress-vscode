@@ -9,6 +9,10 @@ import { applyManifest, validateCommand } from "./manifests/apply";
 import { CallbackRouter } from "./auth/zitadel";
 import { SecretStore } from "./auth/store";
 import { AuthManager } from "./auth/manager";
+import { liveFetchers } from "./tree/fetchers";
+import type { TreeNodeData } from "./tree/nodes";
+import { clientFor } from "./manifests/diff";
+import * as YAML from "yaml";
 
 /**
  * Singleton auth-callback dispatcher. VS Code allows one UriHandler per
@@ -26,7 +30,6 @@ export const callbackRouter = new CallbackRouter();
 export function activate(context: vscode.ExtensionContext): void {
   const profiles = new ProfileStore(context.globalState);
   const auth = new AuthManager(new SecretStore(context.secrets));
-  const tree = new ResourceTreeProvider(profiles);
   const statusBar = createStatusBar(profiles);
   const liveProvider = new LiveManifestProvider();
   const manifestDeps: ManifestDeps = {
@@ -34,6 +37,7 @@ export function activate(context: vscode.ExtensionContext): void {
     auth,
     provider: liveProvider,
   };
+  const tree = new ResourceTreeProvider(profiles, liveFetchers(manifestDeps));
 
   context.subscriptions.push(
     statusBar.item,
@@ -103,6 +107,38 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("airdress.resources.refresh", () => {
       tree.refresh();
     }),
+
+    // Opens the read-only airdress: virtual document for a resource —
+    // the same document T6-04's diff uses as its left side. Writes
+    // nothing to disk.
+    vscode.commands.registerCommand(
+      "airdress.resources.open",
+      async (node: TreeNodeData) => {
+        if (node?.type !== "resource") {
+          return;
+        }
+        const { profile, resource } = node;
+        try {
+          const live = await clientFor(manifestDeps, profile).request<unknown>(
+            `/v1/kinds/${encodeURIComponent(resource.kind)}/${encodeURIComponent(resource.name)}`,
+          );
+          const uri = liveProvider.publish(
+            profile.id,
+            resource.kind,
+            resource.name,
+            YAML.stringify(live),
+          );
+          const doc = await vscode.workspace.openTextDocument(uri);
+          await vscode.window.showTextDocument(doc, { preview: true });
+        } catch (err) {
+          void vscode.window.showErrorMessage(
+            `Airdress: opening ${resource.kind}/${resource.name} from ${profile.fqdn} failed — ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      },
+    ),
 
     vscode.workspace.registerTextDocumentContentProvider(
       AIRDRESS_SCHEME,
