@@ -3,6 +3,7 @@ import { ApiError } from "../api/client";
 import type { Profile } from "../profiles/model";
 import { resolveProfile } from "../profiles/picker";
 import { bundledSchemas } from "./schemas";
+import { validateFleetText } from "./fleet";
 import { parseManifest, SchemaRegistry } from "./validate";
 import { clientFor, type ManifestDeps } from "./diff";
 
@@ -47,7 +48,12 @@ export function problemToDiagnostic(err: ApiError): vscode.Diagnostic {
 
 /** Ajv results as diagnostics (bundled validator — FR-29). */
 export function validateDocument(doc: vscode.TextDocument): void {
-  const result = schemaRegistry().validateText(doc.getText());
+  // Fleet TOML (SPEC-047) is validate-only: there is no endpoint to
+  // apply it to, and no apply affordance exists for it (design §5.4).
+  const result =
+    doc.languageId === "toml"
+      ? validateFleetText(doc.getText())
+      : schemaRegistry().validateText(doc.getText());
   if (result.status === "valid") {
     diagnostics.set(doc.uri, []);
     void vscode.window.setStatusBarMessage(
