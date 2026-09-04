@@ -7,6 +7,7 @@ import {
 import { OwnershipTracker } from "./tree/ownership";
 import { ProfileStore } from "./profiles/store";
 import { addProfile, createStatusBar, pickProfile } from "./profiles/picker";
+import { connectAirdress, type HubAirdress } from "./profiles/connect";
 import { promptForBearer } from "./auth/bearer";
 import {
   breakGlassState,
@@ -278,6 +279,57 @@ export function activate(context: vscode.ExtensionContext): void {
           }`,
         );
       }
+    }),
+
+    // First-contact flow: sign in, discover the account's claimed
+    // Airdresses from the hub, pick one, get a working profile. On a
+    // rejected token or unreachable hub it degrades EXPLICITLY to the
+    // manual-hostname path — the message names the reason; nothing
+    // falls back silently and no ambient default profile is created.
+    vscode.commands.registerCommand("airdress.connectAirdress", async () => {
+      await connectAirdress({
+        profiles,
+        signIn: (profileId) => auth.signInZitadel(profileId, callbackRouter),
+        getToken: (profileId) =>
+          auth.getAccessToken({ id: profileId, authMode: "zitadel" }),
+        discard: (profileId) => auth.signOut(profileId),
+        hubUrl: () =>
+          vscode.workspace
+            .getConfiguration("airdress.hub")
+            .get<string>("url", "https://account.airdress.co"),
+        ui: {
+          pick: async (entries: HubAirdress[]) => {
+            const picked = await vscode.window.showQuickPick(
+              entries.map((entry) => ({
+                label: entry.name,
+                description: entry.fqdn,
+                detail:
+                  entry.dnsStatus && entry.dnsStatus !== "active"
+                    ? `DNS status: ${entry.dnsStatus}`
+                    : undefined,
+                entry,
+              })),
+              { placeHolder: "Which Airdress should this profile connect to?" },
+            );
+            return picked?.entry;
+          },
+          offerManualEntry: async (message) => {
+            const choice = await vscode.window.showWarningMessage(
+              message,
+              "Add by hostname",
+            );
+            return choice === "Add by hostname";
+          },
+          addProfileManually: async () => {
+            await vscode.commands.executeCommand("airdress.profiles.add");
+          },
+          info: (message) => void vscode.window.showInformationMessage(message),
+          error: (message) => void vscode.window.showErrorMessage(message),
+          focusOperatorsView: async () => {
+            await vscode.commands.executeCommand("airdress.operators.focus");
+          },
+        },
+      });
     }),
 
     vscode.commands.registerCommand("airdress.profiles.pick", async () => {

@@ -1,8 +1,9 @@
 # airdress-vscode project dictionary
 # Format: https://cspell.org/docs/dictionaries/custom-dictionaries
 airdr
-Airdress
 airdress
+Airdress
+Airdresses
 Ajv
 behaviour
 checkmark
@@ -19,8 +20,8 @@ neighbours
 openvsx
 ovsx
 PKCE
-Prek
 prek
+Prek
 pygrep
 pyinfra
 recognises

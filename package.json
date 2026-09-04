@@ -22,6 +22,11 @@
   "contributes": {
     "commands": [
       {
+        "command": "airdress.connectAirdress",
+        "title": "Airdress: Connect an Airdress",
+        "icon": "$(add)"
+      },
+      {
         "command": "airdress.profiles.add",
         "title": "Airdress: Add Operator Profile"
       },
@@ -95,7 +100,7 @@
         {
           "id": "airdress",
           "title": "Airdress",
-          "icon": "$(radio-tower)"
+          "icon": "media/sidebar-mark-mono.svg"
         }
       ]
     },
@@ -116,6 +121,12 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "airdress.operators",
+        "contents": "No operators here yet. Sign in and pick from the Airdresses your account has claimed — the hub already knows which names are yours.\n[Connect an Airdress](command:airdress.connectAirdress)\nHave a hostname or an operator token instead? [Add a profile by hostname](command:airdress.profiles.add)"
+      }
+    ],
     "menus": {
       "commandPalette": [
         {
@@ -144,6 +155,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "airdress.connectAirdress",
+          "when": "view == airdress.operators",
+          "group": "navigation"
+        },
         {
           "command": "airdress.principals.create",
           "when": "view == airdress.principals",
@@ -190,6 +206,11 @@
           "type": "string",
           "default": "openid profile email offline_access urn:zitadel:iam:org:project:id:368173150459965108:aud",
           "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:…:aud scope is load-bearing — without it the token is valid everywhere except at the operator."
+        },
+        "airdress.hub.url": {
+          "type": "string",
+          "default": "https://account.airdress.co",
+          "description": "Hub base URL. Connect an Airdress asks it which names the signed-in account has claimed."
         },
         "airdress.dev.allowLocalhost": {
           "type": "boolean",
