@@ -1,8 +1,8 @@
 {
   "name": "airdress-vscode",
   "displayName": "Airdress",
-  "description": "Operator profiles, manifest validation, and resource browsing for airdress operators (SPEC-057)",
-  "version": "0.0.1",
+  "description": "Your Airdress operators, in your editor \u2014 sign in, switch, validate and apply manifests with intent.",
+  "version": "0.0.2",
   "publisher": "airdress",
   "license": "MIT",
   "repository": {
@@ -81,12 +81,12 @@
         "airdress.auth.clientId": {
           "type": "string",
           "default": "389189092820182216",
-          "description": "ZITADEL native public client ID (PKCE only — there is no client secret)."
+          "description": "ZITADEL native public client ID (PKCE only \u2014 there is no client secret)."
         },
         "airdress.auth.scopes": {
           "type": "string",
           "default": "openid profile email offline_access urn:zitadel:iam:org:project:id:368173150459965108:aud",
-          "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:…:aud scope is load-bearing — without it the token is valid everywhere except at the operator."
+          "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:\u2026:aud scope is load-bearing \u2014 without it the token is valid everywhere except at the operator."
         },
         "airdress.dev.allowLocalhost": {
           "type": "boolean",
@@ -155,5 +155,17 @@
     "@iarna/toml": "^2.2.5",
     "ajv": "^8.20.0",
     "yaml": "^2.9.0"
-  }
+  },
+  "icon": "media/publisher-icon-128x128.png",
+  "galleryBanner": {
+    "color": "#111110",
+    "theme": "dark"
+  },
+  "keywords": [
+    "airdress",
+    "operator",
+    "manifests",
+    "pools",
+    "oidc"
+  ]
 }
