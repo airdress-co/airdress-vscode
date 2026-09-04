@@ -261,7 +261,7 @@ suite("the fleet infrastructure boundary", () => {
   const forbidden = [
     "fleet" + "-api",
     "fleet" + "_api",
-    "fleetapi",
+    "fleet" + "api",
     "operator" + "-fleet",
     "operator" + "_fleet",
     ":9191",
