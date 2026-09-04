@@ -151,7 +151,7 @@ suite("no mint path exists — a deliberate decision, not an oversight", () => {
       "owner-token print",
       "owner_token_print",
       "owner-tokens/mint",
-      "mintownertoken",
+      ["mint", "owner", "token"].join(""),
       "mint_owner_token",
     ]) {
       assert.ok(
