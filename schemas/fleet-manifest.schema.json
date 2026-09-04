@@ -2,7 +2,81 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://airdress.co/schemas/fleet-manifest.schema.json",
   "title": "Airdress fleet VM manifest (SPEC-047)",
-  "description": "Validate-only stub (FR-32). TODO(SPEC-057 T6-07): mirror the fields consumed by infra/operator-fleet/manifests/*.toml.",
+  "description": "VALIDATE-ONLY (FR-32): these TOML files under infra/operator-fleet/manifests/ are consumed by pyinfra, not by any HTTP endpoint — the extension contributes NO apply action for them. Fields mirror infra/operator-fleet/manifests/*.toml; secrets are never stored in the manifest (pulled from Secret Manager by inventory.py).",
+  "x-airdress-operator-version": "v0.1.9-alpha.5",
   "type": "object",
-  "additionalProperties": true
+  "required": [
+    "operator_id",
+    "operator_name",
+    "operator_fqdn",
+    "operator_version",
+    "host_id",
+    "ipv6_addr",
+    "tap_index",
+    "ram_mb",
+    "vcpus",
+    "data_volume_gb"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "operator_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "UUID of the hosted operator."
+    },
+    "operator_name": { "type": "string", "minLength": 1 },
+    "operator_fqdn": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.a\\.airdr\\.es$",
+      "description": "SPEC-029 <uuid>.a.airdr.es form."
+    },
+    "operator_version": {
+      "type": "string",
+      "pattern": "^v\\d+\\.\\d+\\.\\d+",
+      "description": "airdress-operator release deployed into the VM."
+    },
+    "host_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Must match a key in operator_fleet_hosts in inventory.py."
+    },
+    "ipv6_addr": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F:]+$",
+      "description": "IPv6 address carved from the host's /64."
+    },
+    "tap_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unique per host; determines TAP device name + IPv6 suffix."
+    },
+    "ram_mb": { "type": "integer", "minimum": 128 },
+    "vcpus": { "type": "integer", "minimum": 1 },
+    "cpu_shares": {
+      "type": "integer",
+      "minimum": 2,
+      "description": "cgroup cpu.shares; 1024 = 1 full core."
+    },
+    "data_volume_gb": { "type": "integer", "minimum": 1 },
+    "operator_port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "dns_enabled": { "type": "boolean" },
+    "tls_enabled": { "type": "boolean" },
+    "zone_suffix": { "type": "string" },
+    "chat_enabled": { "type": "boolean" },
+    "content_key_enabled": {
+      "type": "boolean",
+      "description": "SPEC-035: sealed ChaCha20 key via systemd-creds."
+    },
+    "gts_directory": {
+      "type": "string",
+      "format": "uri",
+      "description": "ACME CA directory for TLS certificate acquisition."
+    },
+    "dns_propagation_delay_secs": { "type": "integer", "minimum": 0 },
+    "hub_issuer": { "type": "string", "format": "uri" },
+    "auth_issuer": { "type": "string", "format": "uri" },
+    "auth_jwks_uri": { "type": "string", "format": "uri" },
+    "auth_audience": { "type": "string", "pattern": "^\\d+$" },
+    "auth_owner_sub": { "type": "string", "pattern": "^\\d+$" }
+  }
 }

@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://airdress.co/schemas/operator-manifest.schema.json",
+  "title": "Airdress operator resource manifest",
+  "description": "Editor-association schema for *.airdress.yaml / *.airdress.json manifests. Known kinds get full spec validation; an UNKNOWN kind only gets the envelope checked here — the extension's own validator reports it as 'unknown, validation disabled', never as valid (NFR-10).",
+  "x-airdress-operator-version": "v0.1.24",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata"],
+  "properties": {
+    "apiVersion": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "minLength": 1 },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string" },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "spec": {}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "kind": { "const": "InferencePoolMember" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "$ref": "./inference-pool-member.schema.json"
+      }
+    }
+  ]
+}

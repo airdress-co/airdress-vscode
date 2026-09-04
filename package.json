@@ -108,13 +108,17 @@
     "yamlValidation": [
       {
         "fileMatch": "*.airdress.yaml",
-        "url": "./schemas/fleet-manifest.schema.json"
+        "url": "./schemas/operator-manifest.schema.json"
+      },
+      {
+        "fileMatch": "*.airdress.yml",
+        "url": "./schemas/operator-manifest.schema.json"
       }
     ],
     "jsonValidation": [
       {
         "fileMatch": "*.airdress.json",
-        "url": "./schemas/fleet-manifest.schema.json"
+        "url": "./schemas/operator-manifest.schema.json"
       }
     ]
   },
@@ -148,6 +152,7 @@
     "diff": "^8.0.3"
   },
   "dependencies": {
+    "@iarna/toml": "^2.2.5",
     "ajv": "^8.20.0",
     "yaml": "^2.9.0"
   }
