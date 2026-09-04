@@ -11,9 +11,15 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to publish, e.g. v0.0.1-alpha.1"
+        description: "Existing tag to publish, e.g. v0.0.1"
         required: true
         type: string
+      registries:
+        description: "Which registries to publish (partial re-publish of an immutable version)"
+        required: true
+        default: both
+        type: choice
+        options: [both, marketplace, openvsx]
 
 permissions:
   contents: read
@@ -48,6 +54,7 @@ jobs:
 
   marketplace:
     name: Publish to VS Code Marketplace
+    if: inputs.registries != 'openvsx'
     needs: package
     runs-on: ubuntu-latest
     environment: marketplace-publish
@@ -68,6 +75,7 @@ jobs:
 
   openvsx:
     name: Publish to Open VSX
+    if: inputs.registries != 'marketplace'
     needs: package
     runs-on: ubuntu-latest
     permissions:
@@ -84,7 +92,10 @@ jobs:
 
   github-release:
     name: GitHub Release
-    needs: [marketplace, openvsx]
+    # Gate on the Marketplace publish; Open VSX may lag behind it (T2-05) and
+    # a release is re-attachable, not immutable, so this must not require both.
+    if: inputs.registries != 'openvsx'
+    needs: [package, marketplace]
     runs-on: ubuntu-latest
     permissions:
       contents: write
