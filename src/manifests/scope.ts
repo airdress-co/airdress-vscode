@@ -9,7 +9,7 @@ import { parseManifest } from "./validate";
  * pure so the selection and confirmation wording are unit-testable.
  */
 
-/** One appliable document within a manifest file. */
+/** One apply-ready document within a manifest file. */
 export interface PlannedDoc {
   kind: string;
   name: string;
@@ -20,7 +20,7 @@ export interface PlannedDoc {
 }
 
 /**
- * Split manifest text into appliable documents.
+ * Split manifest text into apply-ready documents.
  *
  * - JSON is always a single document.
  * - YAML uses the multi-document form; a single-document file keeps its
