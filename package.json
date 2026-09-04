@@ -59,6 +59,23 @@
         "command": "airdress.manifests.apply",
         "title": "Airdress: Apply Manifest to Operator",
         "enablement": "editorLangId == yaml || editorLangId == json"
+      },
+      {
+        "command": "airdress.principals.create",
+        "title": "Airdress: Create Sub-User",
+        "icon": "$(person-add)"
+      },
+      {
+        "command": "airdress.principals.revoke",
+        "title": "Airdress: Revoke Sub-User…"
+      },
+      {
+        "command": "airdress.principals.metadata",
+        "title": "Airdress: Show Sub-User Metadata"
+      },
+      {
+        "command": "airdress.principals.bind",
+        "title": "Airdress: Attach Identity to Sub-User"
       }
     ],
     "viewsContainers": {
@@ -96,6 +113,51 @@
         {
           "command": "airdress.resources.open",
           "when": "false"
+        },
+        {
+          "command": "airdress.principals.create",
+          "when": "false"
+        },
+        {
+          "command": "airdress.principals.revoke",
+          "when": "false"
+        },
+        {
+          "command": "airdress.principals.metadata",
+          "when": "false"
+        },
+        {
+          "command": "airdress.principals.bind",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "airdress.principals.create",
+          "when": "view == airdress.principals",
+          "group": "navigation"
+        },
+        {
+          "command": "airdress.resources.refresh",
+          "when": "view == airdress.resources",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "airdress.principals.metadata",
+          "when": "view == airdress.principals && viewItem == airdressPrincipal",
+          "group": "inline"
+        },
+        {
+          "command": "airdress.principals.bind",
+          "when": "view == airdress.principals && viewItem == airdressPrincipal",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "airdress.principals.revoke",
+          "when": "view == airdress.principals && viewItem == airdressPrincipal",
+          "group": "9_destructive@1"
         }
       ]
     },
@@ -137,6 +199,16 @@
           "default": 60,
           "minimum": 0,
           "description": "Health poll interval in seconds for the ACTIVE profile while the Operators view is visible. 0 disables health polling entirely. Failures back off automatically."
+        },
+        "airdress.docs.subUserRevocationRunbook": {
+          "type": "string",
+          "default": "https://docs.airdress.co/operator/sub-user-revocation",
+          "description": "Where the revoke flow's runbook link points. Offboarding has steps outside the operator; the runbook, not the dialog, is the authority on them."
+        },
+        "airdress.docs.ownerTokenRecoveryRunbook": {
+          "type": "string",
+          "default": "https://docs.airdress.co/operator/owner-token-recovery",
+          "description": "Where the break-glass indicator links. Getting off a break-glass credential is documented there."
         }
       }
     },
