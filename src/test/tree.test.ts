@@ -3,7 +3,12 @@ import * as fs from "fs";
 import * as path from "path";
 import type * as vscodeTypes from "vscode";
 import * as vscode from "vscode";
-import { ResourceTreeProvider } from "../tree/provider";
+import {
+  OperatorsTreeProvider,
+  PrincipalsTreeProvider,
+  ResourcesTreeProvider,
+} from "../tree/provider";
+import { OwnershipTracker } from "../tree/ownership";
 import type { PrincipalMeta, TreeFetchers, TreeNodeData } from "../tree/nodes";
 import { ProfileStore } from "../profiles/store";
 import type { Profile } from "../profiles/model";
@@ -58,6 +63,14 @@ const OWNER_PROFILE: Profile = {
   dev: false,
 };
 
+const SECOND_PROFILE: Profile = {
+  id: "p-second",
+  label: "bob",
+  fqdn: "bob.a.airdr.es",
+  authMode: "bearer",
+  dev: false,
+};
+
 const PRINCIPAL: PrincipalMeta = {
   id: "5b0c9b3a-0000-0000-0000-000000000001",
   displayName: "alice",
@@ -76,89 +89,152 @@ function fetchers(overrides?: Partial<TreeFetchers>): TreeFetchers {
   };
 }
 
-async function storeWith(profile: Profile): Promise<ProfileStore> {
+async function storeWith(...profiles: Profile[]): Promise<ProfileStore> {
   const store = new ProfileStore(new FakeMemento());
-  await store.add(profile);
+  for (const profile of profiles) {
+    await store.add(profile);
+  }
+  await store.setActive(profiles[0]?.id);
   return store;
 }
 
-function sections(children: TreeNodeData[]): string[] {
-  return children.map((c) => (c.type === "section" ? c.section : c.type));
-}
+suite("operators view", () => {
+  test("lists every profile with the active marker and sign-in state", async () => {
+    const store = await storeWith(OWNER_PROFILE, SECOND_PROFILE);
+    const provider = new OperatorsTreeProvider(
+      store,
+      async (node) => node.profile.id === OWNER_PROFILE.id,
+    );
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 2);
+    const ada = roots.find(
+      (r) => r.type === "profile" && r.profile.id === OWNER_PROFILE.id,
+    );
+    const bob = roots.find(
+      (r) => r.type === "profile" && r.profile.id === SECOND_PROFILE.id,
+    );
+    assert.ok(ada?.type === "profile" && bob?.type === "profile");
+    assert.strictEqual(ada.active, true);
+    assert.strictEqual(bob.active, false);
+    assert.strictEqual(ada.signedIn, true);
+    assert.strictEqual(bob.signedIn, false);
+    const bobItem = provider.getTreeItem(bob);
+    assert.match(String(bobItem.description), /no credential/);
+  });
 
-suite("resource tree (T6-06)", () => {
-  test("roots are profiles; expansion yields kinds/principals/enrollments for owners", async () => {
-    const provider = new ResourceTreeProvider(
+  test("clicking a profile routes to the activate command (no ambient default)", async () => {
+    const store = await storeWith(OWNER_PROFILE);
+    const provider = new OperatorsTreeProvider(store);
+    const [node] = await provider.getChildren();
+    const item = provider.getTreeItem(node);
+    assert.strictEqual(item.command?.command, "airdress.profiles.activate");
+  });
+});
+
+suite("resources view (active profile scoped)", () => {
+  test("roots are kinds plus the enrollments section; kinds expand to resources", async () => {
+    const provider = new ResourcesTreeProvider(
       await storeWith(OWNER_PROFILE),
       fetchers(),
     );
     const roots = await provider.getChildren();
-    assert.strictEqual(roots.length, 1);
-    assert.strictEqual(roots[0].type, "profile");
-    const children = await provider.getChildren(roots[0]);
-    assert.deepStrictEqual(sections(children), [
-      "kinds",
-      "principals",
-      "enrollments",
-    ]);
-  });
-
-  test("the Principals branch is ABSENT for non-owners — not present-and-403", async () => {
-    const provider = new ResourceTreeProvider(
-      await storeWith(OWNER_PROFILE),
-      fetchers({ listPrincipals: async () => "forbidden" }),
+    const kinds = roots.filter((r) => r.type === "kind");
+    assert.strictEqual(kinds.length, 2);
+    const enrollments = roots.find(
+      (r) => r.type === "section" && r.section === "enrollments",
     );
-    const [profile] = await provider.getChildren();
-    const children = await provider.getChildren(profile);
-    assert.deepStrictEqual(sections(children), ["kinds", "enrollments"]);
-    assert.ok(
-      !children.some((c) => c.type === "section" && c.section === "principals"),
-    );
-  });
-
-  test("kinds without a bundled schema are marked unknown, validation disabled", async () => {
-    const provider = new ResourceTreeProvider(
-      await storeWith(OWNER_PROFILE),
-      fetchers(),
-    );
-    const [profile] = await provider.getChildren();
-    const children = await provider.getChildren(profile);
-    const kindsSection = children.find(
-      (c) => c.type === "section" && c.section === "kinds",
-    );
-    assert.ok(kindsSection);
-    const kinds = await provider.getChildren(kindsSection);
-    const known = kinds.find(
-      (k) => k.type === "kind" && k.kind === "InferencePoolMember",
-    );
-    const unknown = kinds.find(
-      (k) => k.type === "kind" && k.kind === "MysteryKind",
-    );
-    assert.ok(known && known.type === "kind" && known.known);
-    assert.ok(unknown && unknown.type === "kind" && !unknown.known);
-    const unknownItem = provider.getTreeItem(unknown);
-    assert.strictEqual(unknownItem.description, "unknown, validation disabled");
-  });
-
-  test("resources open the read-only virtual doc — never a write action", async () => {
-    const provider = new ResourceTreeProvider(
-      await storeWith(OWNER_PROFILE),
-      fetchers(),
-    );
-    const [profile] = await provider.getChildren();
-    const children = await provider.getChildren(profile);
-    const kindsSection = children.find(
-      (c) => c.type === "section" && c.section === "kinds",
-    );
-    const [kind] = await provider.getChildren(kindsSection);
-    const [resource] = await provider.getChildren(kind);
+    assert.ok(enrollments, "enrollments listing survives the view split");
+    const [resource] = await provider.getChildren(kinds[0]);
     assert.strictEqual(resource.type, "resource");
     const item = provider.getTreeItem(resource);
     assert.strictEqual(item.command?.command, "airdress.resources.open");
   });
 
-  test("principal tree items expose metadata only and carry no write context", async () => {
-    const provider = new ResourceTreeProvider(
+  test("kinds without a bundled schema are marked unknown, validation disabled", async () => {
+    const provider = new ResourcesTreeProvider(
+      await storeWith(OWNER_PROFILE),
+      fetchers(),
+    );
+    const roots = await provider.getChildren();
+    const unknown = roots.find(
+      (k) => k.type === "kind" && k.kind === "MysteryKind",
+    );
+    assert.ok(unknown && unknown.type === "kind" && !unknown.known);
+    const unknownItem = provider.getTreeItem(unknown);
+    assert.strictEqual(unknownItem.description, "unknown, validation disabled");
+  });
+
+  test("no active profile renders a pointer message, not an error", async () => {
+    const store = await storeWith(OWNER_PROFILE);
+    await store.setActive(undefined);
+    const provider = new ResourcesTreeProvider(store, fetchers());
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 1);
+    assert.strictEqual(roots[0].type, "message");
+  });
+
+  test("an unreachable operator yields an error node; nothing is dropped silently", async () => {
+    const provider = new ResourcesTreeProvider(
+      await storeWith(OWNER_PROFILE),
+      fetchers({
+        listKinds: async () => {
+          throw new Error("operator unreachable");
+        },
+      }),
+    );
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 1);
+    assert.strictEqual(roots[0].type, "message");
+    assert.match(
+      roots[0].type === "message" ? roots[0].text : "",
+      /unreachable/,
+    );
+  });
+});
+
+suite("principals view (owner only)", () => {
+  test("lists principals of the active profile for an owner", async () => {
+    const provider = new PrincipalsTreeProvider(
+      await storeWith(OWNER_PROFILE),
+      fetchers(),
+    );
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 1);
+    assert.strictEqual(roots[0].type, "principal");
+  });
+
+  test("forbidden yields an empty view — defence in depth behind the hidden view", async () => {
+    const provider = new PrincipalsTreeProvider(
+      await storeWith(OWNER_PROFILE),
+      fetchers({ listPrincipals: async () => "forbidden" }),
+    );
+    const roots = await provider.getChildren();
+    assert.deepStrictEqual(roots, []);
+  });
+
+  test("the view itself is contributed behind the ownership context key — absent for non-owners", () => {
+    const ext = vscode.extensions.getExtension("airdress.airdress-vscode");
+    assert.ok(ext);
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(ext.extensionPath, "package.json"), "utf8"),
+    ) as {
+      contributes: {
+        views: Record<string, Array<{ id: string; when?: string }>>;
+      };
+    };
+    const views = pkg.contributes.views.airdress;
+    const ids = views.map((v) => v.id);
+    assert.deepStrictEqual(ids, [
+      "airdress.operators",
+      "airdress.resources",
+      "airdress.principals",
+    ]);
+    const principals = views.find((v) => v.id === "airdress.principals");
+    assert.strictEqual(principals?.when, "airdress.principalsAvailable");
+  });
+
+  test("principal tree items expose metadata only", async () => {
+    const provider = new PrincipalsTreeProvider(
       await storeWith(OWNER_PROFILE),
       fetchers(),
     );
@@ -173,8 +249,6 @@ suite("resource tree (T6-06)", () => {
       vscode.TreeItemCollapsibleState.None,
     );
     assert.match(String(item.description), /metadata only/);
-    // No contextValue → no when-clause menu (create/revoke is a later milestone).
-    assert.strictEqual(item.contextValue, undefined);
   });
 
   test("runtime shape of PrincipalMeta matches the type-level boundary", () => {
@@ -197,41 +271,40 @@ suite("resource tree (T6-06)", () => {
       );
     }
   });
+});
 
-  test("an unreachable operator yields an error node; the profile node stays", async () => {
-    const provider = new ResourceTreeProvider(
-      await storeWith(OWNER_PROFILE),
-      fetchers({
-        listPrincipals: async () => {
-          throw new Error("operator unreachable");
-        },
-      }),
-    );
-    const [profile] = await provider.getChildren();
-    const children = await provider.getChildren(profile);
-    assert.strictEqual(children.length, 1);
-    assert.strictEqual(children[0].type, "message");
-    // Root still lists the profile — no silent switch (design §9).
-    const roots = await provider.getChildren();
-    assert.strictEqual(roots.length, 1);
+suite("ownership tracker", () => {
+  test("caches the probe result per profile", async () => {
+    let calls = 0;
+    const tracker = new OwnershipTracker(async () => {
+      calls += 1;
+      return [PRINCIPAL];
+    });
+    assert.strictEqual(await tracker.isOwner(OWNER_PROFILE), true);
+    assert.strictEqual(await tracker.isOwner(OWNER_PROFILE), true);
+    assert.strictEqual(calls, 1);
+    tracker.invalidate(OWNER_PROFILE.id);
+    await tracker.isOwner(OWNER_PROFILE);
+    assert.strictEqual(calls, 2);
   });
 
-  test("no create/revoke command is contributed for principals (later-milestone scope)", () => {
-    const ext = vscode.extensions.getExtension("airdress.airdress-vscode");
-    assert.ok(ext);
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(ext.extensionPath, "package.json"), "utf8"),
-    ) as {
-      contributes: {
-        commands: Array<{ command: string; title: string }>;
-        menus?: Record<string, unknown>;
-      };
-    };
-    for (const cmd of pkg.contributes.commands) {
-      assert.ok(
-        !/principal|sub-?user/i.test(cmd.command + " " + cmd.title),
-        `no principal write action may be contributed: ${cmd.command}`,
-      );
-    }
+  test("forbidden means non-owner and is cached", async () => {
+    const tracker = new OwnershipTracker(async () => "forbidden");
+    assert.strictEqual(await tracker.isOwner(OWNER_PROFILE), false);
+    assert.strictEqual(tracker.known(OWNER_PROFILE.id), false);
+  });
+
+  test("an unreachable operator hides the view but is NOT cached as non-owner", async () => {
+    let calls = 0;
+    const tracker = new OwnershipTracker(async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error("unreachable");
+      }
+      return [PRINCIPAL];
+    });
+    assert.strictEqual(await tracker.isOwner(OWNER_PROFILE), false);
+    assert.strictEqual(tracker.known(OWNER_PROFILE.id), undefined);
+    assert.strictEqual(await tracker.isOwner(OWNER_PROFILE), true);
   });
 });

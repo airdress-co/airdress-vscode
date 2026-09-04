@@ -4,11 +4,16 @@ import type { Profile } from "../profiles/model";
 import { resolveProfile } from "../profiles/picker";
 import { bundledSchemas } from "./schemas";
 import { validateFleetText } from "./fleet";
-import { parseManifest, SchemaRegistry } from "./validate";
+import { SchemaRegistry, type ValidationResult } from "./validate";
 import { clientFor, type ManifestDeps } from "./diff";
+import {
+  applyConfirmation,
+  planApplyDocuments,
+  type PlannedDoc,
+} from "./scope";
 
 /**
- * Explicit apply (design §5.1/§5.2).
+ * Explicit apply.
  *
  * Apply is a COMMAND, invoked deliberately, always. There is no code
  * path from a save event to an apply anywhere in this extension —
@@ -17,9 +22,14 @@ import { clientFor, type ManifestDeps } from "./diff";
  * does not control. A test asserts the shipped bundle registers no
  * save listener.
  *
- * The confirmation names the target PROFILE and FQDN because the
+ * Validate is a DIFFERENT command with different consequences: it runs
+ * the bundled schema validation and reports diagnostics, and has no
+ * code path that could issue a mutating request — "is this
+ * well-formed?" and "make this real" are different questions.
+ *
+ * The apply confirmation names the target PROFILE and FQDN because the
  * realistic accident is not "I did not mean to apply" — it is "I did
- * not mean to apply THERE" (FR-28).
+ * not mean to apply THERE".
  */
 
 let registry: SchemaRegistry | undefined;
@@ -46,41 +56,88 @@ export function problemToDiagnostic(err: ApiError): vscode.Diagnostic {
   return diagnostic;
 }
 
-/** Ajv results as diagnostics (bundled validator — FR-29). */
-export function validateDocument(doc: vscode.TextDocument): void {
-  // Fleet TOML is validate-only: there is no endpoint to
-  // apply it to, and no apply affordance exists for it (design §5.4).
-  const result =
-    doc.languageId === "toml"
-      ? validateFleetText(doc.getText())
-      : schemaRegistry().validateText(doc.getText());
-  if (result.status === "valid") {
-    diagnostics.set(doc.uri, []);
-    void vscode.window.setStatusBarMessage(
-      `Airdress: ${result.kind} manifest is valid.`,
-      5_000,
-    );
-    return;
-  }
+function resultDiagnostics(
+  doc: vscode.TextDocument,
+  result: ValidationResult,
+  offset: number,
+): vscode.Diagnostic[] {
   const severity =
     result.status === "unknown-kind"
       ? vscode.DiagnosticSeverity.Information
       : vscode.DiagnosticSeverity.Error;
-  diagnostics.set(
-    doc.uri,
-    result.issues.map((issue) => {
-      const d = new vscode.Diagnostic(
-        new vscode.Range(0, 0, 0, 1),
-        issue.path === "/" ? issue.message : `${issue.path}: ${issue.message}`,
-        severity,
-      );
-      d.source = "airdress";
-      return d;
-    }),
-  );
+  const position = doc.positionAt(offset);
+  const range = new vscode.Range(position, position.translate(0, 1));
+  return result.issues.map((issue) => {
+    const d = new vscode.Diagnostic(
+      range,
+      issue.path === "/" ? issue.message : `${issue.path}: ${issue.message}`,
+      severity,
+    );
+    d.source = "airdress";
+    return d;
+  });
 }
 
-/** "Airdress: Validate Manifest" command. */
+/**
+ * Validate a manifest document and publish diagnostics. Purely local:
+ * the bundled Ajv registry, no network, no writes. Multi-document YAML
+ * files are validated per document.
+ */
+export function validateDocument(doc: vscode.TextDocument): void {
+  // Fleet TOML is validate-only: there is no endpoint to
+  // apply it to, and no apply affordance exists for it.
+  if (doc.languageId === "toml") {
+    const result = validateFleetText(doc.getText());
+    if (result.status === "valid") {
+      diagnostics.set(doc.uri, []);
+      void vscode.window.setStatusBarMessage(
+        `Airdress: ${result.kind} manifest is valid.`,
+        5_000,
+      );
+      return;
+    }
+    diagnostics.set(doc.uri, resultDiagnostics(doc, result, 0));
+    return;
+  }
+
+  const plan = planApplyDocuments(doc.getText(), doc.languageId);
+  if ("error" in plan) {
+    diagnostics.set(doc.uri, [
+      new vscode.Diagnostic(
+        new vscode.Range(0, 0, 0, 1),
+        plan.error,
+        vscode.DiagnosticSeverity.Error,
+      ),
+    ]);
+    return;
+  }
+  const all: vscode.Diagnostic[] = [];
+  const kinds: string[] = [];
+  for (const planned of plan.docs) {
+    const result = schemaRegistry().validateText(planned.text);
+    if (result.status === "valid") {
+      kinds.push(planned.kind);
+      continue;
+    }
+    all.push(...resultDiagnostics(doc, result, planned.offset));
+  }
+  diagnostics.set(doc.uri, all);
+  if (all.length === 0) {
+    void vscode.window.setStatusBarMessage(
+      plan.docs.length === 1
+        ? `Airdress: ${kinds[0]} manifest is valid.`
+        : `Airdress: all ${plan.docs.length} manifest documents are valid.`,
+      5_000,
+    );
+  }
+}
+
+/**
+ * "Airdress: Validate Manifest" — diagnostics only. This function (and
+ * everything it calls) takes no API client and holds no credential: a
+ * mutating request is structurally impossible from this command, which
+ * is the point of having it exist separately from apply.
+ */
 export async function validateCommand(): Promise<void> {
   const doc = vscode.window.activeTextEditor?.document;
   if (!doc) {
@@ -89,9 +146,57 @@ export async function validateCommand(): Promise<void> {
   validateDocument(doc);
 }
 
+/** Pick the subset of documents to apply (multi-document files only). */
+async function pickApplyScope(
+  docs: PlannedDoc[],
+): Promise<PlannedDoc[] | undefined> {
+  if (docs.length === 1) {
+    return docs;
+  }
+  // Apply-all stays the one-click default; selecting a subset is an
+  // extra option, not an extra required step.
+  const mode = await vscode.window.showQuickPick(
+    [
+      {
+        label: `Apply all ${docs.length} resources`,
+        description: docs.map((d) => `${d.kind}/${d.name}`).join(", "),
+        all: true,
+      },
+      {
+        label: "Select resources to apply…",
+        description: "apply a subset of this file",
+        all: false,
+      },
+    ],
+    { placeHolder: "This file declares several resources" },
+  );
+  if (!mode) {
+    return undefined;
+  }
+  if (mode.all) {
+    return docs;
+  }
+  const picked = await vscode.window.showQuickPick(
+    docs.map((d) => ({
+      label: `${d.kind}/${d.name}`,
+      picked: false,
+      doc: d,
+    })),
+    {
+      canPickMany: true,
+      placeHolder: "Select the resources to apply",
+    },
+  );
+  if (!picked || picked.length === 0) {
+    return undefined;
+  }
+  return picked.map((p) => p.doc);
+}
+
 /**
  * "Airdress: Apply Manifest" — POST /v1/apply after a modal confirm
- * that names the profile and FQDN.
+ * that names the selected resources and the profile + FQDN. Files
+ * declaring several resources support applying a selected subset.
  */
 export async function applyManifest(
   deps: ManifestDeps,
@@ -105,24 +210,29 @@ export async function applyManifest(
     );
     return;
   }
-  const text = doc.getText();
-  const parsed = parseManifest(text);
-  if ("error" in parsed) {
+  const plan = planApplyDocuments(doc.getText(), doc.languageId);
+  if ("error" in plan) {
     void vscode.window.showErrorMessage(
-      `Airdress: cannot apply — ${parsed.error}`,
+      `Airdress: cannot apply — ${plan.error}`,
     );
     return;
   }
-  const { kind, metadata } = parsed.envelope;
 
   // Pre-apply validation: hard-invalid blocks; unknown kind proceeds
   // with honesty (the operator is the authority) after the confirm.
-  const result = schemaRegistry().validateText(text);
-  if (result.status === "invalid" || result.status === "parse-error") {
-    validateDocument(doc);
-    void vscode.window.showErrorMessage(
-      "Airdress: the manifest fails schema validation — fix the diagnostics first.",
-    );
+  for (const planned of plan.docs) {
+    const result = schemaRegistry().validateText(planned.text);
+    if (result.status === "invalid" || result.status === "parse-error") {
+      validateDocument(doc);
+      void vscode.window.showErrorMessage(
+        "Airdress: the manifest fails schema validation — fix the diagnostics first.",
+      );
+      return;
+    }
+  }
+
+  const selected = await pickApplyScope(plan.docs);
+  if (!selected) {
     return;
   }
 
@@ -131,44 +241,56 @@ export async function applyManifest(
     return;
   }
 
-  // FR-28: name the target. The realistic accident is the wrong operator.
+  const confirmation = applyConfirmation(selected, profile);
   const confirm = await vscode.window.showWarningMessage(
-    `Apply ${kind}/${metadata.name} to profile "${profile.label}" (${profile.fqdn})?`,
-    { modal: true },
+    confirmation.message,
+    { modal: true, detail: confirmation.detail },
     "Apply",
   );
   if (confirm !== "Apply") {
     return;
   }
 
-  try {
-    const response = await clientFor(deps, profile).send("/v1/apply", {
-      method: "POST",
-      headers: {
-        "content-type":
-          doc.languageId === "json" ? "application/json" : "application/yaml",
-      },
-      body: text,
-    });
-    diagnostics.set(doc.uri, []);
-    void vscode.window.showInformationMessage(
-      response.status === 202
-        ? `Airdress: ${kind}/${metadata.name} accepted by ${profile.fqdn} (reconciling).`
-        : `Airdress: ${kind}/${metadata.name} applied to ${profile.fqdn}.`,
-    );
-  } catch (err) {
-    if (err instanceof ApiError) {
-      // The operator's own title/detail, verbatim (design §5.1 step 7).
-      diagnostics.set(doc.uri, [problemToDiagnostic(err)]);
-      void vscode.window.showErrorMessage(
-        `Airdress: apply to ${profile.fqdn} failed — see the diagnostic on the manifest.`,
-      );
-    } else {
-      void vscode.window.showErrorMessage(
-        `Airdress: apply to ${profile.fqdn} failed — ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+  const applied: string[] = [];
+  let accepted = false;
+  for (const planned of selected) {
+    try {
+      const response = await clientFor(deps, profile).send("/v1/apply", {
+        method: "POST",
+        headers: {
+          "content-type":
+            doc.languageId === "json" ? "application/json" : "application/yaml",
+        },
+        body: planned.text,
+      });
+      accepted ||= response.status === 202;
+      applied.push(`${planned.kind}/${planned.name}`);
+    } catch (err) {
+      const done = applied.length
+        ? ` Applied before the failure: ${applied.join(", ")}.`
+        : "";
+      if (err instanceof ApiError) {
+        // The operator's own title/detail, verbatim.
+        diagnostics.set(doc.uri, [problemToDiagnostic(err)]);
+        void vscode.window.showErrorMessage(
+          `Airdress: applying ${planned.kind}/${planned.name} to ${profile.fqdn} failed — see the diagnostic on the manifest.${done}`,
+        );
+      } else {
+        void vscode.window.showErrorMessage(
+          `Airdress: applying ${planned.kind}/${planned.name} to ${profile.fqdn} failed — ${
+            err instanceof Error ? err.message : String(err)
+          }${done}`,
+        );
+      }
+      return;
     }
   }
+  diagnostics.set(doc.uri, []);
+  const what =
+    applied.length === 1 ? applied[0] : `${applied.length} resources`;
+  void vscode.window.showInformationMessage(
+    accepted
+      ? `Airdress: ${what} accepted by ${profile.fqdn} (reconciling).`
+      : `Airdress: ${what} applied to ${profile.fqdn}.`,
+  );
 }
