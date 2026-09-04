@@ -80,6 +80,14 @@
       {
         "command": "airdress.breakGlass.openRunbook",
         "title": "Airdress: Open Owner-Token Recovery Runbook"
+      },
+      {
+        "command": "airdress.drift.addOpenFile",
+        "title": "Airdress: Add Open Manifest to Drift Mapping"
+      },
+      {
+        "command": "airdress.drift.scan",
+        "title": "Airdress: Detect Drift (Workspace)"
       }
     ],
     "viewsContainers": {
