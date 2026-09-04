@@ -39,6 +39,14 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "airdress.profiles.activate",
+        "title": "Airdress: Set Active Profile"
+      },
+      {
+        "command": "airdress.resources.open",
+        "title": "Airdress: Open Live Manifest (read-only)"
+      },
+      {
         "command": "airdress.manifests.diff",
         "title": "Airdress: Diff Manifest Against Live",
         "enablement": "editorLangId == yaml || editorLangId == json"
@@ -65,8 +73,29 @@
     "views": {
       "airdress": [
         {
+          "id": "airdress.operators",
+          "name": "Operators"
+        },
+        {
           "id": "airdress.resources",
           "name": "Resources"
+        },
+        {
+          "id": "airdress.principals",
+          "name": "Principals",
+          "when": "airdress.principalsAvailable"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "airdress.profiles.activate",
+          "when": "false"
+        },
+        {
+          "command": "airdress.resources.open",
+          "when": "false"
         }
       ]
     },

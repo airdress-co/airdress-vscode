@@ -10,49 +10,72 @@ import type {
 } from "./nodes";
 
 /**
- * Read-only resource tree:
- * profiles → kinds → resources; principals (owner-only, metadata-only);
- * enrollments.
+ * Three sidebar views, one per concern (one view per concern is what
+ * keeps a destructive action a place you GO, not a branch you hit
+ * while expanding something else):
  *
+ *   Operators   — every profile: active marker, sign-in state.
+ *   Resources   — kinds → resources (+ enrollments), ACTIVE profile only.
+ *   Principals  — sub-users of the active profile, owner-only. The view
+ *                 itself is hidden (context key) for non-owners: absent,
+ *                 never present-and-403.
+ *
+ * Shared rules, unchanged from the single-tree era:
  * - Construction and registration make no network calls; live data is
- *   fetched lazily on expansion, and only then.
- * - The Principals branch is ABSENT for non-owners, never
- *   present-and-403.
- * - No create/revoke action is contributed on principals — that is
- *   a later milestone (no contextValue enables such a menu).
- * - Opening a resource opens the read-only airdress: virtual document
- *   (the same one T6-04's diff uses as its left side); nothing is
- *   written to disk.
- * - An unreachable operator puts an error node under the profile; the
- *   profile itself stays selected (design §9).
+ *   fetched lazily on expansion or when a view becomes visible.
+ * - Principal rows are admin metadata ONLY (sub-user isolation
+ *   boundary) — no child nodes, no field that could hold content.
+ * - An unreachable operator renders an error node; nothing is silently
+ *   dropped or switched.
  */
-export class ResourceTreeProvider implements vscode.TreeDataProvider<TreeNodeData> {
-  private readonly emitter = new vscode.EventEmitter<
+
+abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData> {
+  protected readonly emitter = new vscode.EventEmitter<
     TreeNodeData | undefined
   >();
   readonly onDidChangeTreeData = this.emitter.event;
   private readonly knownKinds = new Set(bundledSchemas().map((s) => s.kind));
 
-  constructor(
-    private readonly profiles: ProfileStore,
-    private readonly fetchers?: TreeFetchers,
-  ) {}
-
   refresh(): void {
     this.emitter.fire(undefined);
   }
+
+  abstract getChildren(node?: TreeNodeData): Promise<TreeNodeData[]>;
 
   getTreeItem(node: TreeNodeData): vscode.TreeItem {
     switch (node.type) {
       case "profile": {
         const item = new vscode.TreeItem(
           node.profile.label,
-          vscode.TreeItemCollapsibleState.Collapsed,
+          vscode.TreeItemCollapsibleState.None,
         );
+        const flags = [
+          node.profile.dev ? "dev" : undefined,
+          node.active ? "active" : undefined,
+          node.signedIn === false ? "no credential" : undefined,
+        ].filter(Boolean);
         item.description =
-          node.profile.fqdn + (node.profile.dev ? " (dev)" : "");
-        item.iconPath = new vscode.ThemeIcon("radio-tower");
+          node.profile.fqdn + (flags.length ? ` (${flags.join(", ")})` : "");
+        item.iconPath = new vscode.ThemeIcon(
+          node.active ? "circle-filled" : "radio-tower",
+        );
         item.contextValue = "airdressProfile";
+        item.tooltip = [
+          node.profile.fqdn,
+          node.active ? "Active profile" : "Click to make active",
+          node.signedIn === false
+            ? "No credential stored — sign in first"
+            : node.signedIn
+              ? "Signed in"
+              : undefined,
+        ]
+          .filter(Boolean)
+          .join("\n");
+        item.command = {
+          command: "airdress.profiles.activate",
+          title: "Set Active Profile",
+          arguments: [node],
+        };
         return item;
       }
       case "section": {
@@ -74,7 +97,7 @@ export class ResourceTreeProvider implements vscode.TreeDataProvider<TreeNodeDat
           vscode.TreeItemCollapsibleState.Collapsed,
         );
         if (!node.known) {
-          // NFR-10: honesty over green checkmarks.
+          // Honesty over green checkmarks.
           item.description = "unknown, validation disabled";
           item.iconPath = new vscode.ThemeIcon("question");
         }
@@ -95,9 +118,8 @@ export class ResourceTreeProvider implements vscode.TreeDataProvider<TreeNodeDat
         return item;
       }
       case "principal": {
-        // Metadata ONLY (sub-user isolation). Leaf node: no children, no lazy
-        // loader, no content field to populate — and read-only: no
-        // create/revoke contextValue exists for menus to hang off.
+        // Metadata ONLY (sub-user isolation boundary). Leaf node: no
+        // children, no lazy loader, no content field to populate.
         const item = new vscode.TreeItem(
           node.principal.displayName,
           vscode.TreeItemCollapsibleState.None,
@@ -106,6 +128,7 @@ export class ResourceTreeProvider implements vscode.TreeDataProvider<TreeNodeDat
           ? "revoked — metadata only"
           : "metadata only";
         item.iconPath = new vscode.ThemeIcon("person");
+        item.contextValue = "airdressPrincipal";
         item.tooltip = [
           `id: ${node.principal.id}`,
           `created: ${node.principal.createdAt}`,
@@ -137,74 +160,103 @@ export class ResourceTreeProvider implements vscode.TreeDataProvider<TreeNodeDat
     }
   }
 
+  protected isKnownKind(kind: string): boolean {
+    return this.knownKinds.has(kind);
+  }
+
+  protected errorNode(err: unknown): TreeNodeData[] {
+    return [
+      {
+        type: "message",
+        text: err instanceof Error ? err.message : String(err),
+      },
+    ];
+  }
+}
+
+/** The Operators view: every profile, flat. Clicking activates. */
+export class OperatorsTreeProvider extends BaseTreeProvider {
+  constructor(
+    private readonly profiles: ProfileStore,
+    /** SecretStorage lookup — local, never a network call. */
+    private readonly hasCredential?: (
+      profile: TreeNodeData & { type: "profile" },
+    ) => Promise<boolean>,
+  ) {
+    super();
+  }
+
   async getChildren(node?: TreeNodeData): Promise<TreeNodeData[]> {
-    if (!node) {
-      return this.profiles
-        .list()
-        .map((profile) => ({ type: "profile", profile }));
+    if (node) {
+      return [];
+    }
+    const activeId = this.profiles.activeId();
+    return Promise.all(
+      this.profiles.list().map(async (profile) => {
+        const base: TreeNodeData & { type: "profile" } = {
+          type: "profile",
+          profile,
+          active: profile.id === activeId,
+        };
+        if (!this.hasCredential) {
+          return base;
+        }
+        try {
+          return { ...base, signedIn: await this.hasCredential(base) };
+        } catch {
+          return base;
+        }
+      }),
+    );
+  }
+}
+
+/**
+ * The Resources view: kinds → resources, scoped to the ACTIVE profile
+ * (plus the enrollments listing, kept from the single-tree era so no
+ * capability is lost in the split).
+ */
+export class ResourcesTreeProvider extends BaseTreeProvider {
+  constructor(
+    private readonly profiles: ProfileStore,
+    private readonly fetchers?: TreeFetchers,
+  ) {
+    super();
+  }
+
+  private activeProfile() {
+    const id = this.profiles.activeId();
+    return id ? this.profiles.get(id) : undefined;
+  }
+
+  async getChildren(node?: TreeNodeData): Promise<TreeNodeData[]> {
+    const profile = this.activeProfile();
+    if (!profile) {
+      return node
+        ? []
+        : [
+            {
+              type: "message",
+              text: "No active profile — pick one in the Operators view.",
+            },
+          ];
     }
     if (!this.fetchers) {
       return [];
     }
     try {
+      if (!node) {
+        const kinds = await this.fetchers.listKinds(profile);
+        const roots: TreeNodeData[] = kinds.map((kind) => ({
+          type: "kind",
+          profile,
+          kind,
+          known: this.isKnownKind(kind),
+        }));
+        roots.push({ type: "section", profile, section: "enrollments" });
+        return roots;
+      }
       switch (node.type) {
-        case "profile": {
-          const children: TreeNodeData[] = [
-            { type: "section", profile: node.profile, section: "kinds" },
-          ];
-          // Owner-only branch: ABSENT for non-owners (design §6). The
-          // probe happens here, at expansion time — never at activation.
-          const principals = await this.fetchers.listPrincipals(node.profile);
-          if (principals !== "forbidden") {
-            children.push({
-              type: "section",
-              profile: node.profile,
-              section: "principals",
-            });
-          }
-          children.push({
-            type: "section",
-            profile: node.profile,
-            section: "enrollments",
-          });
-          return children;
-        }
-        case "section":
-          switch (node.section) {
-            case "kinds": {
-              const kinds = await this.fetchers.listKinds(node.profile);
-              return kinds.map((kind) => ({
-                type: "kind",
-                profile: node.profile,
-                kind,
-                known: this.knownKinds.has(kind),
-              }));
-            }
-            case "principals": {
-              const principals = await this.fetchers.listPrincipals(
-                node.profile,
-              );
-              if (principals === "forbidden") {
-                return [];
-              }
-              return principals.map((principal) => ({
-                type: "principal",
-                profile: node.profile,
-                principal,
-              }));
-            }
-            case "enrollments": {
-              const enrollments = await this.fetchers.listEnrollments(
-                node.profile,
-              );
-              return enrollments.map((enrollment) => ({
-                type: "enrollment",
-                profile: node.profile,
-                enrollment,
-              }));
-            }
-          }
-          break;
         case "kind": {
           const resources = await this.fetchers.listResources(
             node.profile,
@@ -216,20 +268,62 @@ export class ResourceTreeProvider implements vscode.TreeDataProvider<TreeNodeDat
             resource,
           }));
         }
+        case "section": {
+          if (node.section !== "enrollments") {
+            return [];
+          }
+          const enrollments = await this.fetchers.listEnrollments(node.profile);
+          return enrollments.map((enrollment) => ({
+            type: "enrollment",
+            profile: node.profile,
+            enrollment,
+          }));
+        }
         default:
           return [];
       }
     } catch (err) {
-      // Unreachable operator: an error node, and the profile STAYS —
-      // never a silent profile switch (design §9).
-      return [
-        {
-          type: "message",
-          text: err instanceof Error ? err.message : String(err),
-        },
-      ];
+      return this.errorNode(err);
     }
-    return [];
+  }
+}
+
+/**
+ * The Principals view: sub-users of the active profile, flat, metadata
+ * only. For a non-owner the containing VIEW is hidden via the
+ * `airdress.principalsAvailable` context key — this provider returning
+ * [] for "forbidden" is defence in depth, not the primary gate.
+ */
+export class PrincipalsTreeProvider extends BaseTreeProvider {
+  constructor(
+    private readonly profiles: ProfileStore,
+    private readonly fetchers?: TreeFetchers,
+  ) {
+    super();
+  }
+
+  async getChildren(node?: TreeNodeData): Promise<TreeNodeData[]> {
+    if (node) {
+      return [];
+    }
+    const id = this.profiles.activeId();
+    const profile = id ? this.profiles.get(id) : undefined;
+    if (!profile || !this.fetchers) {
+      return [];
+    }
+    try {
+      const principals = await this.fetchers.listPrincipals(profile);
+      if (principals === "forbidden") {
+        return [];
+      }
+      return principals.map((principal) => ({
+        type: "principal",
+        profile,
+        principal,
+      }));
+    } catch (err) {
+      return this.errorNode(err);
+    }
   }
 }
 

@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
-import { ResourceTreeProvider } from "./tree/provider";
+import {
+  OperatorsTreeProvider,
+  PrincipalsTreeProvider,
+  ResourcesTreeProvider,
+} from "./tree/provider";
+import { OwnershipTracker } from "./tree/ownership";
 import { ProfileStore } from "./profiles/store";
 import { addProfile, createStatusBar, pickProfile } from "./profiles/picker";
 import { promptForBearer } from "./auth/bearer";
@@ -25,7 +30,7 @@ export const callbackRouter = new CallbackRouter();
  *
  * Registers providers and commands only — no network calls happen here.
  * All operator API traffic is deferred until a user gesture (a command,
- * a tree expansion) explicitly asks for it.
+ * a tree expansion, a view becoming visible) explicitly asks for it.
  */
 export function activate(context: vscode.ExtensionContext): void {
   const profiles = new ProfileStore(context.globalState);
@@ -37,18 +42,77 @@ export function activate(context: vscode.ExtensionContext): void {
     auth,
     provider: liveProvider,
   };
-  const tree = new ResourceTreeProvider(profiles, liveFetchers(manifestDeps));
+  const fetchers = liveFetchers(manifestDeps);
+
+  const operatorsTree = new OperatorsTreeProvider(profiles, (node) =>
+    auth.hasCredential({
+      id: node.profile.id,
+      authMode: node.profile.authMode,
+    }),
+  );
+  const resourcesTree = new ResourcesTreeProvider(profiles, fetchers);
+  const principalsTree = new PrincipalsTreeProvider(profiles, fetchers);
+  const ownership = new OwnershipTracker((profile) =>
+    fetchers.listPrincipals(profile),
+  );
+
+  const operatorsView = vscode.window.createTreeView("airdress.operators", {
+    treeDataProvider: operatorsTree,
+  });
+  const resourcesView = vscode.window.createTreeView("airdress.resources", {
+    treeDataProvider: resourcesTree,
+  });
+  const principalsView = vscode.window.createTreeView("airdress.principals", {
+    treeDataProvider: principalsTree,
+  });
+
+  /**
+   * The Principals view is ABSENT for a non-owner — not empty, not
+   * erroring. The ownership probe runs only from user gestures (a view
+   * becoming visible, a profile switch while the sidebar is open, an
+   * explicit refresh) — never at activation.
+   */
+  async function updatePrincipalsContext(): Promise<void> {
+    const sidebarVisible =
+      operatorsView.visible || resourcesView.visible || principalsView.visible;
+    const activeId = profiles.activeId();
+    const active = activeId ? profiles.get(activeId) : undefined;
+    if (!sidebarVisible || !active) {
+      await vscode.commands.executeCommand(
+        "setContext",
+        "airdress.principalsAvailable",
+        false,
+      );
+      return;
+    }
+    const owner = await ownership.isOwner(active);
+    await vscode.commands.executeCommand(
+      "setContext",
+      "airdress.principalsAvailable",
+      owner,
+    );
+  }
+
+  function refreshAllViews(): void {
+    operatorsTree.refresh();
+    resourcesTree.refresh();
+    principalsTree.refresh();
+  }
 
   context.subscriptions.push(
     statusBar.item,
+    operatorsView,
+    resourcesView,
+    principalsView,
     profiles.onDidChange(() => {
       statusBar.refresh();
-      tree.refresh();
+      refreshAllViews();
+      void updatePrincipalsContext();
     }),
+    operatorsView.onDidChangeVisibility(() => void updatePrincipalsContext()),
+    resourcesView.onDidChangeVisibility(() => void updatePrincipalsContext()),
 
     vscode.window.registerUriHandler(callbackRouter),
-
-    vscode.window.registerTreeDataProvider("airdress.resources", tree),
 
     vscode.commands.registerCommand("airdress.profiles.add", async () => {
       const profile = await addProfile(profiles);
@@ -82,8 +146,20 @@ export function activate(context: vscode.ExtensionContext): void {
       await pickProfile(profiles);
     }),
 
+    // Operators-view click target: make this profile active. Not in
+    // the palette — the palette flow is airdress.profiles.pick.
+    vscode.commands.registerCommand(
+      "airdress.profiles.activate",
+      async (node: TreeNodeData) => {
+        if (node?.type !== "profile") {
+          return;
+        }
+        await profiles.setActive(node.profile.id);
+      },
+    ),
+
     vscode.commands.registerCommand("airdress.profiles.signOut", async () => {
-      // Explicit profile resolution — no ambient default (NFR-8).
+      // Explicit profile resolution — no ambient default.
       const all = profiles.list();
       if (all.length === 0) {
         void vscode.window.showInformationMessage(
@@ -99,17 +175,22 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       await auth.signOut(picked.id);
+      ownership.invalidate(picked.id);
       void vscode.window.showInformationMessage(
         `Airdress: signed out of ${picked.label}.`,
       );
+      refreshAllViews();
+      void updatePrincipalsContext();
     }),
 
     vscode.commands.registerCommand("airdress.resources.refresh", () => {
-      tree.refresh();
+      ownership.invalidate();
+      refreshAllViews();
+      void updatePrincipalsContext();
     }),
 
     // Opens the read-only airdress: virtual document for a resource —
-    // the same document T6-04's diff uses as its left side. Writes
+    // the same document the diff flow uses as its left side. Writes
     // nothing to disk.
     vscode.commands.registerCommand(
       "airdress.resources.open",
@@ -149,13 +230,14 @@ export function activate(context: vscode.ExtensionContext): void {
       await diffAgainstLive(manifestDeps);
     }),
 
+    // Validate is deliberately a separate command from apply, with no
+    // mutating code path — see manifests/apply.ts.
     vscode.commands.registerCommand("airdress.manifests.validate", async () => {
       await validateCommand();
     }),
 
     // Apply is a deliberate command — deliberately NOT bound to any
-    // save event (design §5.2); a test asserts the bundle registers no
-    // save listener.
+    // save event; a test asserts the bundle registers no save listener.
     vscode.commands.registerCommand("airdress.manifests.apply", async () => {
       await applyManifest(manifestDeps);
     }),

@@ -57,7 +57,14 @@ export interface ResourceRef {
 
 /** Discriminated tree node union. */
 export type TreeNodeData =
-  | { type: "profile"; profile: Profile }
+  | {
+      type: "profile";
+      profile: Profile;
+      /** Rendered in the Operators view: the active (status bar) profile. */
+      active?: boolean;
+      /** Rendered in the Operators view: whether any credential is held. */
+      signedIn?: boolean;
+    }
   | {
       type: "section";
       profile: Profile;
