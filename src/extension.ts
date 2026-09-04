@@ -15,6 +15,16 @@ import { CallbackRouter } from "./auth/zitadel";
 import { SecretStore } from "./auth/store";
 import { AuthManager } from "./auth/manager";
 import { liveFetchers, pingFetcher } from "./tree/fetchers";
+import {
+  bindOidcIdentity,
+  createSubUser,
+  defaultAdminUI,
+  revokeSubUser,
+  showPrincipalMetadata,
+  type PrincipalAdminDeps,
+} from "./principals/admin";
+import type { Profile } from "./profiles/model";
+import * as crypto from "node:crypto";
 import { HealthPoller } from "./health/poller";
 import { StatusCache } from "./health/statusCache";
 import type { TreeNodeData } from "./tree/nodes";
@@ -120,6 +130,36 @@ export function activate(context: vscode.ExtensionContext): void {
       "airdress.principalsAvailable",
       owner,
     );
+  }
+
+  const adminDeps: PrincipalAdminDeps = {
+    manifest: manifestDeps,
+    ui: defaultAdminUI,
+    // "Add as profile" is the user's separate, deliberate decision to
+    // store the credential — never an automatic side effect of create.
+    addBearerProfile: async (profile, displayName, token) => {
+      const newProfile: Profile = {
+        id: crypto.randomUUID(),
+        label: `${displayName} @ ${profile.label}`,
+        fqdn: profile.fqdn,
+        authMode: "bearer",
+        dev: profile.dev,
+      };
+      await profiles.add(newProfile, { allowLocalhost: profile.dev });
+      await auth.setBearer(newProfile.id, token);
+    },
+    copyToClipboard: async (token) => {
+      await vscode.env.clipboard.writeText(token);
+    },
+    refreshPrincipals: () => {
+      principalsTree.refresh();
+      operatorsTree.refresh();
+    },
+  };
+
+  function activeProfile(): Profile | undefined {
+    const id = profiles.activeId();
+    return id ? profiles.get(id) : undefined;
   }
 
   function refreshAllViews(): void {
@@ -290,6 +330,63 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("airdress.manifests.apply", async () => {
       await applyManifest(manifestDeps);
     }),
+
+    // Principal administration. Owner-only by construction: every
+    // entry point below is contributed ONLY inside the Principals
+    // view, which is absent for non-owners (and all four commands are
+    // hidden from the command palette).
+    vscode.commands.registerCommand("airdress.principals.create", async () => {
+      const profile = activeProfile();
+      if (!profile) {
+        void vscode.window.showInformationMessage(
+          "Airdress: no active profile — pick one in the Operators view first.",
+        );
+        return;
+      }
+      await createSubUser(adminDeps, profile);
+    }),
+
+    vscode.commands.registerCommand(
+      "airdress.principals.revoke",
+      async (node: TreeNodeData) => {
+        await revokeSubUser(adminDeps, node);
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "airdress.principals.metadata",
+      async (node: TreeNodeData) => {
+        await showPrincipalMetadata(
+          adminDeps,
+          node,
+          async (content, principalId) => {
+            if (node?.type !== "principal") {
+              return;
+            }
+            const uri = liveProvider.publish(
+              node.profile.id,
+              "sub-user-metadata",
+              principalId,
+              content,
+            );
+            const doc = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(doc, { preview: true });
+          },
+        );
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "airdress.principals.bind",
+      async (node: TreeNodeData) => {
+        // Issuer comes from the profile's auth configuration — the
+        // user never transcribes a URL.
+        const issuer = vscode.workspace
+          .getConfiguration("airdress.auth")
+          .get<string>("issuer", "");
+        await bindOidcIdentity(adminDeps, node, issuer);
+      },
+    ),
   );
 }
 

@@ -18,7 +18,7 @@ import type { Profile } from "../profiles/model";
  * them as `never` means any attempt to add such a field to
  * {@link PrincipalMeta} fails to compile.
  */
-type ForbiddenContentFields = {
+export type ForbiddenContentFields = {
   readonly content?: never;
   readonly message?: never;
   readonly messages?: never;
