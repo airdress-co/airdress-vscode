@@ -55,6 +55,13 @@ export interface ResourceRef {
   readonly name: string;
 }
 
+/** A resource's live status, as the operator reports it. */
+export interface ResourceStatus {
+  readonly ready: boolean;
+  /** The operator's own status word, verbatim. */
+  readonly state: string;
+}
+
 /** Discriminated tree node union. */
 export type TreeNodeData =
   | {
@@ -71,7 +78,20 @@ export type TreeNodeData =
       section: "kinds" | "principals" | "enrollments";
     }
   | { type: "kind"; profile: Profile; kind: string; known: boolean }
-  | { type: "resource"; profile: Profile; resource: ResourceRef }
+  | {
+      type: "resource";
+      profile: Profile;
+      resource: ResourceRef;
+      /** Live status, when the Resources view has observed one. */
+      status?: ResourceStatus;
+    }
+  | {
+      /** One health axis rendered as its own row — axes are never merged. */
+      type: "health";
+      axis: "liveness" | "correctness";
+      icon: string;
+      text: string;
+    }
   | { type: "principal"; profile: Profile; principal: PrincipalMeta }
   | { type: "enrollment"; profile: Profile; enrollment: EnrollmentMeta }
   | { type: "message"; text: string };
@@ -89,4 +109,10 @@ export interface TreeFetchers {
   listResources(profile: Profile, kind: string): Promise<ResourceRef[]>;
   listPrincipals(profile: Profile): Promise<PrincipalMeta[] | "forbidden">;
   listEnrollments(profile: Profile): Promise<EnrollmentMeta[]>;
+  /** Per-resource status; feeds the Resources view AND the health roll-up. */
+  getStatus(
+    profile: Profile,
+    kind: string,
+    name: string,
+  ): Promise<ResourceStatus>;
 }

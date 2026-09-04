@@ -5,8 +5,37 @@ import type {
   EnrollmentMeta,
   PrincipalMeta,
   ResourceRef,
+  ResourceStatus,
   TreeFetchers,
 } from "./nodes";
+
+/**
+ * Defensive status parsing: the roll-up needs one boolean and one word.
+ * Anything the response does not state explicitly degrades to
+ * not-ready with an honest "Unknown" — never to a green checkmark.
+ */
+export function parseResourceStatus(
+  response: Record<string, unknown> | null | undefined,
+): ResourceStatus {
+  const r = response ?? {};
+  const word = [r.state, r.phase, r.status]
+    .map((v) => (typeof v === "string" ? v : undefined))
+    .find((v) => v !== undefined);
+  const ready =
+    r.ready === true || (word !== undefined && word.toLowerCase() === "ready");
+  return { ready, state: word ?? (ready ? "Ready" : "Unknown") };
+}
+
+/** Liveness probe: latency of GET /v1/ping, throwing when unanswered. */
+export function pingFetcher(
+  deps: ManifestDeps,
+): (profile: Profile) => Promise<number> {
+  return async (profile: Profile): Promise<number> => {
+    const started = Date.now();
+    await clientFor(deps, profile).send("/v1/ping");
+    return Date.now() - started;
+  };
+}
 
 /**
  * Live operator fetchers for the resource tree.
@@ -67,6 +96,19 @@ export function liveFetchers(deps: ManifestDeps): TreeFetchers {
         }
         throw err;
       }
+    },
+
+    async getStatus(
+      profile: Profile,
+      kind: string,
+      name: string,
+    ): Promise<ResourceStatus> {
+      const response = await clientFor(deps, profile).request<
+        Record<string, unknown>
+      >(
+        `/v1/kinds/${encodeURIComponent(kind)}/${encodeURIComponent(name)}/status`,
+      );
+      return parseResourceStatus(response);
     },
 
     async listEnrollments(profile: Profile): Promise<EnrollmentMeta[]> {

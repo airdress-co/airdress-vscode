@@ -1,6 +1,13 @@
 import * as vscode from "vscode";
 import { ProfileStore } from "../profiles/store";
 import { bundledSchemas } from "../manifests/schemas";
+import {
+  correctnessLine,
+  livenessLine,
+  type CorrectnessSignal,
+  type LivenessSignal,
+} from "../health/state";
+import type { StatusCache } from "../health/statusCache";
 import type {
   EnrollmentMeta,
   PrincipalMeta,
@@ -47,7 +54,9 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
       case "profile": {
         const item = new vscode.TreeItem(
           node.profile.label,
-          vscode.TreeItemCollapsibleState.None,
+          node.active && this.showsHealth()
+            ? vscode.TreeItemCollapsibleState.Expanded
+            : vscode.TreeItemCollapsibleState.None,
         );
         const flags = [
           node.profile.dev ? "dev" : undefined,
@@ -108,7 +117,16 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
           node.resource.name,
           vscode.TreeItemCollapsibleState.None,
         );
-        item.iconPath = new vscode.ThemeIcon("symbol-object");
+        if (node.status) {
+          item.description = node.status.state;
+        }
+        item.iconPath = new vscode.ThemeIcon(
+          node.status
+            ? node.status.ready
+              ? "pass"
+              : "warning"
+            : "symbol-object",
+        );
         item.contextValue = "airdressResource";
         item.command = {
           command: "airdress.resources.open",
@@ -149,6 +167,17 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
         item.iconPath = new vscode.ThemeIcon("device-mobile");
         return item;
       }
+      case "health": {
+        // One row per axis. Liveness and correctness are NEVER folded
+        // into a single indicator anywhere in the UI.
+        const item = new vscode.TreeItem(
+          node.text,
+          vscode.TreeItemCollapsibleState.None,
+        );
+        item.iconPath = new vscode.ThemeIcon(node.icon);
+        item.contextValue = `airdressHealth.${node.axis}`;
+        return item;
+      }
       case "message": {
         const item = new vscode.TreeItem(
           node.text,
@@ -164,6 +193,11 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
     return this.knownKinds.has(kind);
   }
 
+  /** Whether profile rows expand into per-axis health rows. */
+  protected showsHealth(): boolean {
+    return false;
+  }
+
   protected errorNode(err: unknown): TreeNodeData[] {
     return [
       {
@@ -174,7 +208,17 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
   }
 }
 
-/** The Operators view: every profile, flat. Clicking activates. */
+/** How the Operators view reads the two health signals. */
+export interface HealthSource {
+  livenessFor(profileId: string): LivenessSignal | undefined;
+  correctnessFor(profileId: string): CorrectnessSignal;
+}
+
+/**
+ * The Operators view: every profile, flat; clicking activates. The
+ * ACTIVE profile additionally expands into two health rows — one per
+ * axis, never combined.
+ */
 export class OperatorsTreeProvider extends BaseTreeProvider {
   constructor(
     private readonly profiles: ProfileStore,
@@ -182,13 +226,38 @@ export class OperatorsTreeProvider extends BaseTreeProvider {
     private readonly hasCredential?: (
       profile: TreeNodeData & { type: "profile" },
     ) => Promise<boolean>,
+    private readonly health?: HealthSource,
   ) {
     super();
   }
 
+  protected override showsHealth(): boolean {
+    return this.health !== undefined;
+  }
+
   async getChildren(node?: TreeNodeData): Promise<TreeNodeData[]> {
     if (node) {
-      return [];
+      if (node.type !== "profile" || !node.active || !this.health) {
+        return [];
+      }
+      // An operator that has not answered (or was never polled) is
+      // UNMONITORED — not healthy, not failing, unobserved.
+      const liveness =
+        this.health.livenessFor(node.profile.id) ??
+        ({ signal: "unmonitored" } as LivenessSignal);
+      const live = livenessLine(liveness);
+      const correct = correctnessLine(
+        this.health.correctnessFor(node.profile.id),
+      );
+      return [
+        { type: "health", axis: "liveness", icon: live.icon, text: live.text },
+        {
+          type: "health",
+          axis: "correctness",
+          icon: correct.icon,
+          text: correct.text,
+        },
+      ];
     }
     const activeId = this.profiles.activeId();
     return Promise.all(
@@ -220,6 +289,10 @@ export class ResourcesTreeProvider extends BaseTreeProvider {
   constructor(
     private readonly profiles: ProfileStore,
     private readonly fetchers?: TreeFetchers,
+    /** Shared with the health roll-up — one sweep serves both. */
+    private readonly statusCache?: StatusCache,
+    /** Called after statuses land, so the health view can re-render. */
+    private readonly onStatusesObserved?: () => void,
   ) {
     super();
   }
@@ -262,11 +335,38 @@ export class ResourcesTreeProvider extends BaseTreeProvider {
             node.profile,
             node.kind,
           );
-          return resources.map((resource) => ({
-            type: "resource",
-            profile: node.profile,
-            resource,
-          }));
+          // Fetch statuses alongside the listing; failures degrade to
+          // "no status shown", never to an invented verdict. Results
+          // land in the shared cache the health roll-up reads.
+          const statuses = await Promise.allSettled(
+            resources.map((r) =>
+              this.fetchers!.getStatus(node.profile, r.kind, r.name),
+            ),
+          );
+          const nodes = resources.map((resource, i) => {
+            const settled = statuses[i];
+            const status =
+              settled.status === "fulfilled" ? settled.value : undefined;
+            if (status && this.statusCache) {
+              this.statusCache.set(node.profile.id, {
+                kind: resource.kind,
+                name: resource.name,
+                ready: status.ready,
+                state: status.state,
+                checkedAt: new Date().toISOString(),
+              });
+            }
+            return {
+              type: "resource" as const,
+              profile: node.profile,
+              resource,
+              status,
+            };
+          });
+          if (this.statusCache) {
+            this.onStatusesObserved?.();
+          }
+          return nodes;
         }
         case "section": {
           if (node.section !== "enrollments") {
