@@ -27,7 +27,7 @@ suite("scoped apply planning", () => {
     assert.strictEqual(plan.docs[0].name, "a");
   });
 
-  test("a multi-document file splits into one appliable doc per resource", () => {
+  test("a multi-document file splits into one apply-ready doc per resource", () => {
     const plan = planApplyDocuments(`${DOC_A}---\n${DOC_B}`, "yaml");
     assert.ok("docs" in plan);
     assert.deepStrictEqual(
