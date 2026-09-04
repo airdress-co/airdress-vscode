@@ -8,6 +8,13 @@ import { OwnershipTracker } from "./tree/ownership";
 import { ProfileStore } from "./profiles/store";
 import { addProfile, createStatusBar, pickProfile } from "./profiles/picker";
 import { promptForBearer } from "./auth/bearer";
+import {
+  breakGlassState,
+  breakGlassText,
+  breakGlassTooltip,
+  classifyBearer,
+} from "./auth/breakGlass";
+import { runbookUrl } from "./principals/admin";
 import { AIRDRESS_SCHEME, LiveManifestProvider } from "./manifests/virtual";
 import { diffAgainstLive, type ManifestDeps } from "./manifests/diff";
 import { applyManifest, validateCommand } from "./manifests/apply";
@@ -130,6 +137,7 @@ export function activate(context: vscode.ExtensionContext): void {
       "airdress.principalsAvailable",
       owner,
     );
+    await refreshBreakGlass();
   }
 
   const adminDeps: PrincipalAdminDeps = {
@@ -168,6 +176,43 @@ export function activate(context: vscode.ExtensionContext): void {
     principalsTree.refresh();
   }
 
+  // Break-glass indicator: an OWNER session on an opaque bearer is a
+  // break-glass session and renders loudly in the status bar, linking
+  // to the recovery runbook. Shape only — never any part of the value.
+  const breakGlassItem = vscode.window.createStatusBarItem(
+    "airdress.breakGlass",
+    vscode.StatusBarAlignment.Left,
+    49,
+  );
+  breakGlassItem.name = "Airdress break-glass state";
+  breakGlassItem.command = "airdress.breakGlass.openRunbook";
+  breakGlassItem.backgroundColor = new vscode.ThemeColor(
+    "statusBarItem.warningBackground",
+  );
+  async function refreshBreakGlass(): Promise<void> {
+    const active = activeProfile();
+    if (!active) {
+      breakGlassItem.hide();
+      return;
+    }
+    const bearer =
+      active.authMode === "bearer"
+        ? await auth.getAccessToken({ id: active.id, authMode: "bearer" })
+        : undefined;
+    const state = breakGlassState({
+      authMode: active.authMode,
+      bearerShape: classifyBearer(bearer),
+      isOwner: ownership.known(active.id),
+    });
+    if (state === "break-glass") {
+      breakGlassItem.text = breakGlassText(active.fqdn);
+      breakGlassItem.tooltip = breakGlassTooltip(active.fqdn);
+      breakGlassItem.show();
+    } else {
+      breakGlassItem.hide();
+    }
+  }
+
   const syncPollerProfile = () => {
     const id = profiles.activeId();
     poller.setActiveProfile(id ? profiles.get(id) : undefined);
@@ -175,8 +220,11 @@ export function activate(context: vscode.ExtensionContext): void {
   syncPollerProfile();
   poller.setVisible(operatorsView.visible);
 
+  void refreshBreakGlass();
+
   context.subscriptions.push(
     statusBar.item,
+    breakGlassItem,
     operatorsView,
     resourcesView,
     principalsView,
@@ -187,6 +235,7 @@ export function activate(context: vscode.ExtensionContext): void {
       refreshAllViews();
       syncPollerProfile();
       void updatePrincipalsContext();
+      void refreshBreakGlass();
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("airdress.health.intervalSeconds")) {
@@ -264,6 +313,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       await auth.signOut(picked.id);
       ownership.invalidate(picked.id);
+      void refreshBreakGlass();
       void vscode.window.showInformationMessage(
         `Airdress: signed out of ${picked.label}.`,
       );
@@ -372,6 +422,17 @@ export function activate(context: vscode.ExtensionContext): void {
             const doc = await vscode.workspace.openTextDocument(uri);
             await vscode.window.showTextDocument(doc, { preview: true });
           },
+        );
+      },
+    ),
+
+    // Break-glass has an EXIT, one click away — and no mint action:
+    // owner-token minting requires being on the operator's host.
+    vscode.commands.registerCommand(
+      "airdress.breakGlass.openRunbook",
+      async () => {
+        await vscode.env.openExternal(
+          vscode.Uri.parse(runbookUrl("ownerRecovery")),
         );
       },
     ),

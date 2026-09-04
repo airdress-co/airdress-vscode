@@ -76,6 +76,10 @@
       {
         "command": "airdress.principals.bind",
         "title": "Airdress: Attach Identity to Sub-User"
+      },
+      {
+        "command": "airdress.breakGlass.openRunbook",
+        "title": "Airdress: Open Owner-Token Recovery Runbook"
       }
     ],
     "viewsContainers": {
