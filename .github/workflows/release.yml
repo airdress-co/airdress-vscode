@@ -1,0 +1,114 @@
+# Package once, publish the identical artifact twice (NFR-9).
+# No stored credential anywhere: Marketplace via Entra workload identity
+# federation (environment marketplace-publish), Open VSX via trusted
+# publishing. A VSCE_PAT/OVSX_PAT in the environment would silently override
+# both OIDC paths — never add one.
+name: Release
+
+# Dispatch-only by owner decision (2026-09-04): publishing to two public
+# registries is a deliberate act, never a side effect of pushing a tag.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish, e.g. v0.0.1"
+        required: true
+        type: string
+      registries:
+        description: "Which registries to publish (partial re-publish of an immutable version)"
+        required: true
+        default: both
+        type: choice
+        options: [both, marketplace, openvsx]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    # release-approval carries a required reviewer: every release run pauses
+    # here until a human approves it in the Actions UI.
+    environment: release-approval
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify tag matches package.json version
+        run: |
+          tag="${{ inputs.tag }}"
+          pkg="v$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag $tag != package.json $pkg — bump the version before tagging"
+            exit 1
+          fi
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: "*.vsix"
+          if-no-files-found: error
+
+  marketplace:
+    name: Publish to VS Code Marketplace
+    if: inputs.registries != 'openvsx'
+    needs: package
+    runs-on: ubuntu-latest
+    environment: marketplace-publish
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: vsce publish (Entra WIF, no token)
+        run: npx @vscode/vsce publish --azure-credential --packagePath *.vsix
+
+  openvsx:
+    name: Publish to Open VSX
+    if: inputs.registries != 'marketplace'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      # --trusted-publishing passed explicitly: ovsx silently prefers any
+      # access token present in the environment (design §7.2).
+      - name: ovsx publish (trusted publishing, no token)
+        run: npx ovsx publish *.vsix --trusted-publishing
+
+  github-release:
+    name: GitHub Release
+    # Gate on the Marketplace publish; Open VSX may lag behind it (T2-05) and
+    # a release is re-attachable, not immutable, so this must not require both.
+    if: inputs.registries != 'openvsx'
+    needs: [package, marketplace]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      # release-please owns the tag and the Release; this only attaches the
+      # published artifact to it (the offline-install path).
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: "*.vsix"

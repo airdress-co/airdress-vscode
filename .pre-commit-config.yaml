@@ -1,0 +1,52 @@
+repos:
+  - repo: https://github.com/streetsidesoftware/cspell-cli
+    rev: v8.17.3
+    hooks:
+      - id: cspell
+        name: cspell
+        args: ["--no-progress", "--no-summary", "--no-must-find-files"]
+
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: "3.6.1"
+    hooks:
+      - id: editorconfig-checker
+        name: editorconfig-checker
+        exclude: ^(package-lock\.json|media/)
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.17.2
+    hooks:
+      - id: markdownlint-cli2
+        name: markdownlint-cli2
+
+  - repo: local
+    hooks:
+      - id: no-internal-refs
+        name: no internal spec/runbook references
+        # This repo is public: internal process identifiers (spec, runbook,
+        # research-record numbers) must not appear in any tracked file.
+        entry: '\b(SPEC|RB|RDR)-[0-9]{3}\b'
+        language: pygrep
+        exclude: ^\.pre-commit-config\.yaml$
+
+      - id: no-ai-attribution
+        name: no AI tool references
+        # No AI assistant/vendor references or attribution anywhere in
+        # this repo — files or commit messages.
+        entry: '(?i)\b(claude|anthropic|copilot co-authored)\b'
+        language: pygrep
+        exclude: ^\.pre-commit-config\.yaml$
+
+      - id: prettier
+        name: prettier
+        entry: npx prettier --check
+        language: system
+        types_or: [ts, json, yaml, markdown]
+        exclude: ^(package-lock\.json)$
+
+      - id: eslint
+        name: eslint
+        entry: npx eslint
+        language: system
+        files: ^src/.*\.ts$
+        pass_filenames: true

@@ -1,0 +1,19 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "dictionaryDefinitions": [
+    {
+      "name": "project-words",
+      "path": "./.cspell/project-words.txt",
+      "addWords": true
+    }
+  ],
+  "dictionaries": ["project-words", "typescript", "node", "npm"],
+  "ignorePaths": [
+    "node_modules",
+    "dist",
+    "package-lock.json",
+    "*.vsix",
+    ".vscode-test"
+  ]
+}

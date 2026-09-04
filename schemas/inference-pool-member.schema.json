@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://airdress.co/schemas/operator/inference-pool-member.v1alpha1.json",
+  "title": "InferencePoolMember manifest",
+  "description": "Hand-authored from airdress-operator crates/airdress-operator/src/inference/types.rs (PoolMemberSpec). The operator publishes no schema (design §5.3); this file is the extension's honest, version-pinned copy.",
+  "x-airdress-operator-version": "v0.1.24",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {
+      "const": "airdress.co/v1alpha1"
+    },
+    "kind": {
+      "const": "InferencePoolMember"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string" },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "resourceVersion": { "type": "string" }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["backend", "models"],
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "type": "string",
+          "description": "Backend identifier: \"vllm-openai\" (OpenAI-API upstream) or \"echo\" (no upstream). The reconciler's validate() rejects unknown values at apply time.",
+          "examples": ["vllm-openai", "echo"]
+        },
+        "url": {
+          "type": "string",
+          "description": "Upstream URL the operator probes and forwards inference to. Required for vllm-openai over http-direct; omitted for echo and operator-signal members."
+        },
+        "authSecretRef": {
+          "type": "string",
+          "description": "Secret-vault key holding the upstream bearer token. The manifest carries only the reference name — never the secret."
+        },
+        "caFileRef": {
+          "type": "string",
+          "description": "Optional secret-vault key for a private-CA bundle (Tailscale-style CAs, LE staging)."
+        },
+        "models": {
+          "type": "array",
+          "description": "Models this member advertises; probed against the upstream's GET /v1/models each tick.",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Optional context-window hint."
+              }
+            }
+          }
+        },
+        "draining": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the router stops sending new traffic; in-flight requests complete."
+        },
+        "transport": {
+          "type": "string",
+          "enum": ["http-direct", "operator-signal"],
+          "description": "Transport discriminator. Omitted means http-direct."
+        },
+        "computeOperatorRef": {
+          "type": "string",
+          "description": "Enrolled compute-role operator to dispatch through. REQUIRED when transport is operator-signal; REJECTED with http-direct."
+        },
+        "traits": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Backend capability declarations.",
+          "properties": {
+            "supportsMultiConversation": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether this backend can serve multiple concurrent, independent conversations."
+            }
+          }
+        }
+      }
+    }
+  }
+}

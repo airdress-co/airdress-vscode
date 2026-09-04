@@ -1,0 +1,171 @@
+{
+  "name": "airdress-vscode",
+  "displayName": "Airdress",
+  "description": "Your Airdress operators, in your editor \u2014 sign in, switch, validate and apply manifests with intent.",
+  "version": "0.0.2",
+  "publisher": "airdress",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/airdress-co/airdress-vscode.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onUri"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "airdress.profiles.add",
+        "title": "Airdress: Add Operator Profile"
+      },
+      {
+        "command": "airdress.profiles.pick",
+        "title": "Airdress: Switch Operator Profile"
+      },
+      {
+        "command": "airdress.profiles.signOut",
+        "title": "Airdress: Sign Out of Profile"
+      },
+      {
+        "command": "airdress.resources.refresh",
+        "title": "Airdress: Refresh Resources",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "airdress.manifests.diff",
+        "title": "Airdress: Diff Manifest Against Live",
+        "enablement": "editorLangId == yaml || editorLangId == json"
+      },
+      {
+        "command": "airdress.manifests.validate",
+        "title": "Airdress: Validate Manifest"
+      },
+      {
+        "command": "airdress.manifests.apply",
+        "title": "Airdress: Apply Manifest to Operator",
+        "enablement": "editorLangId == yaml || editorLangId == json"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "airdress",
+          "title": "Airdress",
+          "icon": "$(radio-tower)"
+        }
+      ]
+    },
+    "views": {
+      "airdress": [
+        {
+          "id": "airdress.resources",
+          "name": "Resources"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Airdress",
+      "properties": {
+        "airdress.auth.issuer": {
+          "type": "string",
+          "default": "https://airdress-co-tffhig.us1.zitadel.cloud",
+          "description": "ZITADEL issuer URL for OIDC sign-in."
+        },
+        "airdress.auth.clientId": {
+          "type": "string",
+          "default": "389189092820182216",
+          "description": "ZITADEL native public client ID (PKCE only \u2014 there is no client secret)."
+        },
+        "airdress.auth.scopes": {
+          "type": "string",
+          "default": "openid profile email offline_access urn:zitadel:iam:org:project:id:368173150459965108:aud",
+          "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:\u2026:aud scope is load-bearing \u2014 without it the token is valid everywhere except at the operator."
+        },
+        "airdress.dev.allowLocalhost": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow 'localhost' as a profile target for local operator development. Profiles created this way are marked as dev profiles and the status bar shows the dev state."
+        },
+        "airdress.requestTimeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "description": "Timeout in milliseconds for operator API requests."
+        },
+        "airdress.telemetry.traceHeader": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send x-airdress-trace: 1 on requests to force-sample server-side traces."
+        }
+      }
+    },
+    "yamlValidation": [
+      {
+        "fileMatch": "*.airdress.yaml",
+        "url": "./schemas/operator-manifest.schema.json"
+      },
+      {
+        "fileMatch": "*.airdress.yml",
+        "url": "./schemas/operator-manifest.schema.json"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "*.airdress.json",
+        "url": "./schemas/operator-manifest.schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src && prettier --check .",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "pretest": "npm run compile-tests && npm run compile",
+    "test": "vscode-test",
+    "package": "npm run compile && vsce package --no-git-tag-version"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.30.0",
+    "ovsx": "^0.10.4",
+    "prettier": "^3.6.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.35.0"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.5",
+    "diff": "^8.0.3"
+  },
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "ajv": "^8.20.0",
+    "yaml": "^2.9.0"
+  },
+  "icon": "media/publisher-icon-128x128.png",
+  "galleryBanner": {
+    "color": "#111110",
+    "theme": "dark"
+  },
+  "keywords": [
+    "airdress",
+    "operator",
+    "manifests",
+    "pools",
+    "oidc"
+  ]
+}
