@@ -55,6 +55,7 @@ suite("authorize URL", () => {
     scopes:
       "openid profile email offline_access " +
       "urn:zitadel:iam:org:project:id:368173150459965108:aud",
+    authorizeBase: "https://account.airdress.co/login/authorize",
   };
 
   test("carries PKCE S256, state, and the project-audience scope", () => {
@@ -66,11 +67,10 @@ suite("authorize URL", () => {
         "ch4llenge",
       ),
     );
-    assert.strictEqual(
-      url.origin,
-      "https://airdress-co-tffhig.us1.zitadel.cloud",
-    );
-    assert.strictEqual(url.pathname, "/oauth/v2/authorize");
+    // The interactive hop starts on the branded hub entry, which 302s
+    // to the IdP with the query passed through verbatim.
+    assert.strictEqual(url.origin, "https://account.airdress.co");
+    assert.strictEqual(url.pathname, "/login/authorize");
     assert.strictEqual(url.searchParams.get("response_type"), "code");
     assert.strictEqual(url.searchParams.get("client_id"), cfg.clientId);
     assert.strictEqual(url.searchParams.get("code_challenge"), "ch4llenge");
@@ -84,6 +84,31 @@ suite("authorize URL", () => {
       "project-audience scope missing from the authorization request",
     );
     assert.ok(scope.includes("offline_access"), "offline_access missing");
+  });
+
+  test("empty or unset authorizeBase falls back to the issuer's authorize endpoint", () => {
+    for (const authorizeBase of ["", undefined]) {
+      const url = new URL(
+        buildAuthorizeUrl(
+          { ...cfg, authorizeBase },
+          "http://127.0.0.1:39131/callback",
+          "st4te",
+          "ch4llenge",
+        ),
+      );
+      assert.strictEqual(
+        url.origin,
+        "https://airdress-co-tffhig.us1.zitadel.cloud",
+      );
+      assert.strictEqual(url.pathname, "/oauth/v2/authorize");
+      // Same query either way — only the base differs.
+      assert.strictEqual(url.searchParams.get("state"), "st4te");
+      assert.ok(
+        (url.searchParams.get("scope") ?? "").includes(
+          "urn:zitadel:iam:org:project:id:368173150459965108:aud",
+        ),
+      );
+    }
   });
 
   test("never carries a client secret", () => {

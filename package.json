@@ -207,6 +207,11 @@
           "default": "openid profile email offline_access urn:zitadel:iam:org:project:id:368173150459965108:aud",
           "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:…:aud scope is load-bearing — without it the token is valid everywhere except at the operator."
         },
+        "airdress.auth.authorizeBase": {
+          "type": "string",
+          "default": "https://account.airdress.co/login/authorize",
+          "markdownDescription": "Base URL for the interactive authorization request. Sign-in opens here and the hub 302-redirects to the identity provider with the query passed through verbatim, so the browser hop starts on a branded page. Point this at the issuer's own authorize endpoint to bypass the branded entry; when empty, `{issuer}/oauth/v2/authorize` is used directly. Token and JWKS requests always go to the issuer."
+        },
         "airdress.auth.route": {
           "type": "string",
           "enum": [
