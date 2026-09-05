@@ -5,10 +5,13 @@ import { challengeS256, generateState, generateVerifier } from "./pkce";
 /**
  * ZITADEL OIDC authorization-code + PKCE flow.
  *
- * Primary route: vscode.env.asExternalUri + a registered UriHandler on
- * `${vscode.env.uriScheme}://airdress.airdress-vscode/auth/callback`.
+ * Primary route: a registered UriHandler on
+ * `${vscode.env.uriScheme}://airdress.airdress-vscode/auth/callback`,
+ * sent to the IdP as exactly that bare string (asExternalUri is used
+ * only as an environment probe — see registeredRedirectUri).
  * Fallback route: ephemeral RFC 8252 loopback listener on 127.0.0.1 for
- * editor forks whose uriScheme is not registered on the ZITADEL app.
+ * editor forks whose uriScheme is not registered on the ZITADEL app,
+ * and for remote/web contexts that rewrite external URIs.
  *
  * Both routes open the SYSTEM browser — no embedded webview (FR-14).
  *
@@ -157,6 +160,36 @@ export class CallbackRouter implements vscode.UriHandler {
       });
     });
   }
+}
+
+/**
+ * The exact redirect URI registered on the ZITADEL native app for a
+ * given editor scheme — and therefore the ONLY string that may be sent
+ * as `redirect_uri`. ZITADEL exact-matches redirect URIs: any appended
+ * query (asExternalUri adds a `windowId` on desktop) fails authorize
+ * with invalid_request "requested redirect_uri is missing in the
+ * client configuration".
+ */
+export function registeredRedirectUri(uriScheme: string): string {
+  return `${uriScheme}://airdress.airdress-vscode/auth/callback`;
+}
+
+/**
+ * Environment probe over asExternalUri: `true` when the external form
+ * of the registered callback still points at this extension's
+ * UriHandler (same scheme + authority, extra query tolerated — it is
+ * never sent to the IdP). Remote and web contexts rewrite the URI to
+ * an https tunnel form, which the ZITADEL app does not register — such
+ * environments must use the loopback route instead.
+ */
+export function externalUriTargetsUriHandler(
+  external: vscode.Uri,
+  uriScheme: string,
+): boolean {
+  return (
+    external.scheme.toLowerCase() === uriScheme.toLowerCase() &&
+    external.authority.toLowerCase() === "airdress.airdress-vscode"
+  );
 }
 
 /** The custom-scheme redirect never fired — offer the loopback retry. */
@@ -317,12 +350,11 @@ async function signInViaUriHandler(
   const verifier = generateVerifier();
   const state = generateState();
 
-  const callbackUri = await vscode.env.asExternalUri(
-    vscode.Uri.parse(
-      `${vscode.env.uriScheme}://airdress.airdress-vscode/auth/callback`,
-    ),
-  );
-  const redirectUri = callbackUri.toString(true);
+  // The IdP gets the BARE registered string — authorize AND token
+  // exchange. asExternalUri output is never sent: on desktop it appends
+  // a windowId query, and ZITADEL exact-matches redirect URIs. The
+  // UriHandler fires globally, so losing the windowId is acceptable.
+  const redirectUri = registeredRedirectUri(vscode.env.uriScheme);
 
   const authorizeUrl = buildAuthorizeUrl(
     cfg,
@@ -351,6 +383,17 @@ export async function signIn(router: CallbackRouter): Promise<TokenSet> {
   if (
     !(KNOWN_URI_SCHEMES as readonly string[]).includes(vscode.env.uriScheme)
   ) {
+    return signInViaLoopback(cfg);
+  }
+
+  // asExternalUri as an environment PROBE only: when it rewrites the
+  // callback away from the vscode-scheme form (remote / web contexts),
+  // the registered redirect can never reach this extension's
+  // UriHandler — go straight to loopback.
+  const probe = await vscode.env.asExternalUri(
+    vscode.Uri.parse(registeredRedirectUri(vscode.env.uriScheme)),
+  );
+  if (!externalUriTargetsUriHandler(probe, vscode.env.uriScheme)) {
     return signInViaLoopback(cfg);
   }
 
