@@ -9,7 +9,9 @@ import {
 import {
   buildAuthorizeUrl,
   CallbackRouter,
+  externalUriTargetsUriHandler,
   parseCallbackQuery,
+  registeredRedirectUri,
   UriHandlerTimeoutError,
   KNOWN_URI_SCHEMES,
 } from "../auth/zitadel";
@@ -91,6 +93,63 @@ suite("authorize URL", () => {
       "c",
     );
     assert.ok(!raw.includes("client_secret"));
+  });
+});
+
+suite("registered redirect URI (exact-match discipline)", () => {
+  test("the redirect_uri sent to the IdP is the BARE registered string", () => {
+    // ZITADEL exact-matches redirect URIs; asExternalUri appends a
+    // windowId query on desktop, which fails authorize with
+    // invalid_request. The authorize URL must therefore carry the
+    // registered string exactly — no query, no windowId.
+    const redirect = registeredRedirectUri("vscode");
+    assert.strictEqual(
+      redirect,
+      "vscode://airdress.airdress-vscode/auth/callback",
+    );
+    const url = new URL(
+      buildAuthorizeUrl(
+        {
+          issuer: "https://airdress-co-tffhig.us1.zitadel.cloud",
+          clientId: "389189092820182216",
+          scopes: "openid",
+        },
+        redirect,
+        "st4te",
+        "ch4llenge",
+      ),
+    );
+    const sent = url.searchParams.get("redirect_uri");
+    assert.strictEqual(sent, "vscode://airdress.airdress-vscode/auth/callback");
+    assert.ok(!sent.includes("?"), "redirect_uri must carry no query");
+    assert.ok(
+      !sent.includes("windowId"),
+      "redirect_uri must carry no windowId",
+    );
+  });
+
+  test("the environment probe tolerates an appended query", () => {
+    // Desktop asExternalUri output: same scheme + authority, windowId
+    // query appended. Still this extension's UriHandler.
+    const desktop = vscode.Uri.parse(
+      "vscode://airdress.airdress-vscode/auth/callback?windowId=_blank",
+    );
+    assert.strictEqual(externalUriTargetsUriHandler(desktop, "vscode"), true);
+  });
+
+  test("the environment probe rejects a rewritten external URI", () => {
+    // Remote/web contexts rewrite the callback to an https tunnel form
+    // the IdP does not register — such environments go to loopback.
+    for (const rewritten of [
+      "https://tunnel.example.test/auth/callback?vscode-scheme=vscode",
+      "vscode://some.other-extension/auth/callback",
+    ]) {
+      assert.strictEqual(
+        externalUriTargetsUriHandler(vscode.Uri.parse(rewritten), "vscode"),
+        false,
+        `must not treat ${rewritten} as the registered callback`,
+      );
+    }
   });
 });
 
