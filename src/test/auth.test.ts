@@ -12,6 +12,7 @@ import {
   externalUriTargetsUriHandler,
   parseCallbackQuery,
   registeredRedirectUri,
+  selectRoute,
   UriHandlerTimeoutError,
   KNOWN_URI_SCHEMES,
 } from "../auth/zitadel";
@@ -150,6 +151,39 @@ suite("registered redirect URI (exact-match discipline)", () => {
         `must not treat ${rewritten} as the registered callback`,
       );
     }
+  });
+});
+
+suite("sign-in route selection (airdress.auth.route)", () => {
+  test('"loopback" forces the loopback route regardless of scheme', () => {
+    // Several editor instances side by side: the OS may deliver a
+    // custom-scheme callback to the wrong one. The loopback listener
+    // binds to this exact extension-host process, so the setting must
+    // win even for schemes the UriHandler route would accept.
+    for (const scheme of [...KNOWN_URI_SCHEMES, "some-fork"]) {
+      assert.strictEqual(selectRoute("loopback", scheme), "loopback");
+    }
+  });
+
+  test('"auto" keeps the current behavior', () => {
+    assert.strictEqual(selectRoute("auto", "vscode"), "uri-handler");
+    assert.strictEqual(selectRoute("auto", "some-fork"), "loopback");
+  });
+
+  test("the setting is declared with exactly the two routes", () => {
+    const ext = vscode.extensions.getExtension("airdress.airdress-vscode");
+    assert.ok(ext);
+    const declared = (
+      ext.packageJSON as {
+        contributes: {
+          configuration: {
+            properties: Record<string, { enum?: string[]; default?: string }>;
+          };
+        };
+      }
+    ).contributes.configuration.properties["airdress.auth.route"];
+    assert.deepStrictEqual(declared?.enum, ["auto", "loopback"]);
+    assert.strictEqual(declared?.default, "auto");
   });
 });
 

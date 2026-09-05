@@ -370,19 +370,40 @@ async function signInViaUriHandler(
 }
 
 /**
+ * Pure route selection (unit-tested). `airdress.auth.route` set to
+ * "loopback" always wins: the loopback listener binds to this exact
+ * extension-host process, so it is immune to the OS delivering a
+ * custom-scheme callback to the wrong editor instance when several run
+ * side by side. Under "auto", a uriScheme outside the set registered
+ * on the ZITADEL app goes to loopback; anything else starts on the
+ * UriHandler route.
+ */
+export function selectRoute(
+  route: string,
+  uriScheme: string,
+): "uri-handler" | "loopback" {
+  if (route === "loopback") {
+    return "loopback";
+  }
+  return (KNOWN_URI_SCHEMES as readonly string[]).includes(uriScheme)
+    ? "uri-handler"
+    : "loopback";
+}
+
+/**
  * Run the interactive sign-in flow.
  *
- * Route selection is not heuristic (design §4.3): a uriScheme outside
- * the set registered on the ZITADEL app goes straight to loopback; a
+ * Route selection is not heuristic (design §4.3): see selectRoute. A
  * known scheme whose handler never fires gets an explicit loopback
  * retry offer rather than a silent hang.
  */
 export async function signIn(router: CallbackRouter): Promise<TokenSet> {
   const cfg = getAuthConfig();
 
-  if (
-    !(KNOWN_URI_SCHEMES as readonly string[]).includes(vscode.env.uriScheme)
-  ) {
+  const route = vscode.workspace
+    .getConfiguration("airdress.auth")
+    .get<string>("route", "auto");
+  if (selectRoute(route, vscode.env.uriScheme) === "loopback") {
     return signInViaLoopback(cfg);
   }
 
