@@ -207,6 +207,15 @@
           "default": "openid profile email offline_access urn:zitadel:iam:org:project:id:368173150459965108:aud",
           "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:…:aud scope is load-bearing — without it the token is valid everywhere except at the operator."
         },
+        "airdress.auth.route": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "loopback"
+          ],
+          "default": "auto",
+          "markdownDescription": "How the sign-in callback returns to the editor. `auto` uses the registered `vscode://` handler with a loopback fallback; `loopback` always uses an RFC 8252 loopback listener on 127.0.0.1. Loopback is the reliable choice when several editor instances run side by side — the operating system may deliver a `vscode://` callback to the wrong instance."
+        },
         "airdress.hub.url": {
           "type": "string",
           "default": "https://account.airdress.co",
