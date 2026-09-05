@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/airdress-co/airdress-vscode/compare/v0.2.0...v0.3.0) (2026-09-05)
+
+
+### Features
+
+* **auth:** airdress.auth.authorizeBase setting for the branded sign-in entry ([836eebe](https://github.com/airdress-co/airdress-vscode/commit/836eebed013ebd4d0fe567eb2bafd6a3b34a15e0))
+* **auth:** airdress.auth.route setting to force the loopback sign-in route ([b6cc8aa](https://github.com/airdress-co/airdress-vscode/commit/b6cc8aad7278bb594509516645985d32681eea45))
+
+
+### Bug Fixes
+
+* **apply:** surface the operator's {error, path} rejection shape as anchored diagnostics ([ca3f6a8](https://github.com/airdress-co/airdress-vscode/commit/ca3f6a84bc3fc89b04a9ef7c48c734d9e37a5d3a))
+* **auth:** send the bare registered redirect_uri to the IdP ([f4ea286](https://github.com/airdress-co/airdress-vscode/commit/f4ea286c591cbda06392cc82a9aebe27beed7a68))
+* **tree:** decode live operator response shapes; generate API types from the contract ([f42965f](https://github.com/airdress-co/airdress-vscode/commit/f42965fad402b6dbefd8b316f5007a14229c5ae7))
+
 ## [0.2.0](https://github.com/airdress-co/airdress-vscode/compare/v0.1.0...v0.2.0) (2026-09-04)
 
 ### Features
