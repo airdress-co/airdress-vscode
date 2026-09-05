@@ -29,6 +29,17 @@ suite("bundled operator-kind schemas (T6-05)", () => {
     }
   });
 
+  test("every bundled schema's $id is its published per-kind alias URL", () => {
+    for (const { kind, schema } of bundledSchemas()) {
+      const id = (schema as Record<string, unknown>)["$id"];
+      assert.strictEqual(
+        id,
+        `https://schemas.airdress.co/operator/${kind}/v1.json`,
+        `schema for ${kind} must carry the published alias $id`,
+      );
+    }
+  });
+
   test("a grounded InferencePoolMember manifest validates", () => {
     const result = realRegistry().validateText(
       [
