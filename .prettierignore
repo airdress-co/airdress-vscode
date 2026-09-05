@@ -2,5 +2,10 @@ dist/
 out/
 node_modules/
 src/api/generated/
+# Generated: synced byte-for-byte from schemas.airdress.co pinned artifacts
+src/manifests/schemas/*.json
+schemas/*.schema.json
+!schemas/fleet-manifest.schema.json
+!schemas/operator-manifest.schema.json
 *.vsix
 package-lock.json

@@ -285,6 +285,7 @@
     "pretest": "npm run compile-tests && npm run compile",
     "test": "vscode-test",
     "generate:api": "node scripts/generate-api.mjs",
+    "sync:schemas": "node scripts/sync-schemas.mjs",
     "package": "npm run compile && vsce package --no-git-tag-version"
   },
   "devDependencies": {

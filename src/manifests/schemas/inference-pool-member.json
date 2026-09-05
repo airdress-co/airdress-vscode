@@ -1,11 +1,7 @@
 {
+  "$id": "https://schemas.airdress.co/operator/InferencePoolMember/v1.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://airdress.co/schemas/operator/inference-pool-member.v1alpha1.json",
-  "title": "InferencePoolMember manifest",
-  "description": "Hand-authored from airdress-operator crates/airdress-operator/src/inference/types.rs (PoolMemberSpec). The operator publishes no schema (design §5.3); this file is the extension's honest, version-pinned copy.",
-  "x-airdress-operator-version": "v0.1.24",
-  "type": "object",
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "description": "A resource manifest applied to an Airdress operator.",
   "properties": {
     "apiVersion": {
       "const": "airdress.co/v1alpha1"
@@ -14,84 +10,158 @@
       "const": "InferencePoolMember"
     },
     "metadata": {
-      "type": "object",
-      "required": ["name"],
+      "description": "The `metadata` block of a manifest.",
       "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "namespace": { "type": "string" },
         "labels": {
-          "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
         },
-        "resourceVersion": { "type": "string" }
-      }
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "description": "Accepted for k8s familiarity but ignored — every operator manages one airdress's resources (one namespace).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resourceVersion": {
+          "description": "Optimistic concurrency token. When present, apply is rejected with 409 if the stored row's `resource_version` doesn't match. When absent, last-writer-wins.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
     },
     "spec": {
-      "type": "object",
-      "required": ["backend", "models"],
       "additionalProperties": false,
+      "description": "`spec` block of an `InferencePoolMember` manifest.",
       "properties": {
-        "backend": {
-          "type": "string",
-          "description": "Backend identifier: \"vllm-openai\" (OpenAI-API upstream) or \"echo\" (no upstream). The reconciler's validate() rejects unknown values at apply time.",
-          "examples": ["vllm-openai", "echo"]
-        },
-        "url": {
-          "type": "string",
-          "description": "Upstream URL the operator probes and forwards inference to. Required for vllm-openai over http-direct; omitted for echo and operator-signal members."
-        },
         "authSecretRef": {
-          "type": "string",
-          "description": "Secret-vault key holding the upstream bearer token. The manifest carries only the reference name — never the secret."
+          "default": "",
+          "description": "Secret-vault key holding the upstream bearer token. The operator resolves the reference on each reconcile; the manifest only carries the reference name, never the secret value. Omitted for echo, which has no upstream to authenticate to.",
+          "type": "string"
+        },
+        "backend": {
+          "description": "Backend identifier. \"vllm-openai\" (an OpenAI-API upstream) or \"echo\" (no upstream; answers with the text it was sent). Unknown values are rejected at apply time.",
+          "type": "string"
         },
         "caFileRef": {
-          "type": "string",
-          "description": "Optional secret-vault key for a private-CA bundle (Tailscale-style CAs, LE staging)."
-        },
-        "models": {
-          "type": "array",
-          "description": "Models this member advertises; probed against the upstream's GET /v1/models each tick.",
-          "items": {
-            "type": "object",
-            "required": ["name"],
-            "additionalProperties": false,
-            "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "contextWindow": {
-                "type": "integer",
-                "minimum": 1,
-                "description": "Optional context-window hint."
-              }
-            }
-          }
-        },
-        "draining": {
-          "type": "boolean",
-          "default": false,
-          "description": "When true, the router stops sending new traffic; in-flight requests complete."
-        },
-        "transport": {
-          "type": "string",
-          "enum": ["http-direct", "operator-signal"],
-          "description": "Transport discriminator. Omitted means http-direct."
+          "description": "Optional secret-vault key for a private-CA bundle. When set, the operator adds the bundle to the HTTPS client's root store before connecting to `url`. Use this for Tailscale-style private CAs and LE staging.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "computeOperatorRef": {
-          "type": "string",
-          "description": "Enrolled compute-role operator to dispatch through. REQUIRED when transport is operator-signal; REJECTED with http-direct."
+          "description": "Name of the enrolled compute-role operator the homing operator should dispatch through. Required when transport is operator-signal; rejected when transport is http-direct.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "draining": {
+          "default": false,
+          "description": "When `true`, the router stops sending new traffic. In-flight requests still complete. Toggling to `false` re-admits the member after a successful probe. Defaults to `false`.",
+          "type": "boolean"
+        },
+        "models": {
+          "description": "Models this member advertises. The reconciler probes `GET /v1/models` per tick; declared names not seen in the upstream response flip `ModelsAdvertised=False`.",
+          "items": {
+            "additionalProperties": false,
+            "description": "One entry of `spec.models`. v1: name + optional capability hints.",
+            "properties": {
+              "contextWindow": {
+                "description": "Optional context-window hint. Operator-internal callers may use this to pre-reject oversized requests before forwarding.",
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "name": {
+                "description": "Model identifier the upstream returns from `GET /v1/models`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "type": "array"
         },
         "traits": {
-          "type": "object",
           "additionalProperties": false,
-          "description": "Backend capability declarations.",
+          "description": "Backend capability declarations. Omitting this block is equivalent to declaring every trait at its default.",
           "properties": {
             "supportsMultiConversation": {
-              "type": "boolean",
               "default": true,
-              "description": "Whether this backend can serve multiple concurrent, independent conversations."
+              "description": "Whether this backend can serve more than one concurrent, independent conversation. Every OpenAI-compatible chat-completions backend is stateless per request and trivially satisfies this, as does echo; default true. Set false for a backend that is genuinely session-bound.",
+              "type": "boolean"
             }
-          }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "transport": {
+          "anyOf": [
+            {
+              "description": "How the homing operator reaches this member: http-direct (probe and forward straight to spec.url over HTTPS) or operator-signal (a compute-role operator on the member side connects outbound and work is dispatched over the negotiated transport).",
+              "oneOf": [
+                {
+                  "description": "The homing operator probes and forwards directly to spec.url over HTTPS. Use when the upstream is reachable from the homing operator's network.",
+                  "enum": [
+                    "http-direct"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "description": "The upstream runs an operator in compute role. The compute operator enrolls and signals availability; spec.url is ignored and dispatch goes through the negotiated transport recorded in status.",
+                  "enum": [
+                    "operator-signal"
+                  ],
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Transport discriminator. Omitting the field defaults to http-direct, so existing manifests round trip without changes."
+        },
+        "url": {
+          "default": "",
+          "description": "Upstream URL the operator probes and forwards inference to. HTTPS in production; http:// accepted for LAN or private-network development. Required for vllm-openai over http-direct; omitted for echo and for operator-signal members, which have nothing to dial.",
+          "type": "string"
         }
-      }
+      },
+      "required": [
+        "backend",
+        "models"
+      ],
+      "type": "object"
     }
-  }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "Airdress operator InferencePoolMember manifest",
+  "type": "object",
+  "x-airdress-operator-version": "v0.1.30"
 }
