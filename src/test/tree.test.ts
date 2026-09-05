@@ -9,6 +9,7 @@ import {
   ResourcesTreeProvider,
 } from "../tree/provider";
 import { OwnershipTracker } from "../tree/ownership";
+import { decodeKinds } from "../tree/fetchers";
 import type { PrincipalMeta, TreeFetchers, TreeNodeData } from "../tree/nodes";
 import { ProfileStore } from "../profiles/store";
 import type { Profile } from "../profiles/model";
@@ -190,6 +191,26 @@ suite("resources view (active profile scoped)", () => {
       roots[0].type === "message" ? roots[0].text : "",
       /unreachable/,
     );
+  });
+
+  test("an unrecognized response shape renders a friendly node — never [object Object] or a TypeError", async () => {
+    const provider = new ResourcesTreeProvider(
+      await storeWith(OWNER_PROFILE),
+      fetchers({
+        // What a decoder throws for a body neither the contract nor a
+        // known-live operator sends.
+        listKinds: async () => decodeKinds({ kinds: [{ surprise: true }] }),
+      }),
+    );
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 1);
+    assert.strictEqual(roots[0].type, "message");
+    const text = roots[0].type === "message" ? roots[0].text : "";
+    assert.doesNotMatch(text, /\[object Object\]/);
+    assert.doesNotMatch(text, /TypeError|Cannot read properties/);
+    assert.match(text, /Unrecognized response/);
+    const item = provider.getTreeItem(roots[0]);
+    assert.doesNotMatch(String(item.label), /\[object Object\]/);
   });
 });
 

@@ -1,10 +1,15 @@
-# airdress-vscode project dictionary
 # Format: https://cspell.org/docs/dictionaries/custom-dictionaries
-airdr
-airdress
+# airdress-vscode project dictionary
 Airdress
 Airdresses
 Ajv
+PKCE
+Prek
+VSCodium
+VSIX
+ZITADEL
+airdr
+airdress
 behaviour
 checkmark
 checkmarks
@@ -19,9 +24,7 @@ llenge
 neighbours
 openvsx
 ovsx
-PKCE
 prek
-Prek
 pygrep
 pyinfra
 recognises
@@ -32,8 +35,6 @@ uvx
 vcpus
 vllm
 vsce
-VSCodium
-VSIX
+webpush
 wordmark
-ZITADEL
 zitadel

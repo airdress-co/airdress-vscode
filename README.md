@@ -33,6 +33,11 @@ npm test            # @vscode/test-electron (headless: xvfb-run -a npm test)
 npm run package     # vsce package -> airdress-vscode-<version>.vsix
 ```
 
+Operator API types in `src/api/generated/` are generated from the
+operator's OpenAPI contract and committed (no build-time cross-repo
+reach). To regenerate against a newer contract:
+`OPENAPI_PATH=/path/to/openapi.yaml OPENAPI_SHA=<contract commit> npm run generate:api`.
+
 ## Layout
 
 - `src/extension.ts` — activation: registers providers; no network calls.

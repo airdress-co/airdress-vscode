@@ -284,6 +284,7 @@
     "compile-tests": "tsc -p tsconfig.test.json",
     "pretest": "npm run compile-tests && npm run compile",
     "test": "vscode-test",
+    "generate:api": "node scripts/generate-api.mjs",
     "package": "npm run compile && vsce package --no-git-tag-version"
   },
   "devDependencies": {
@@ -296,6 +297,7 @@
     "@vscode/vsce": "^3.6.0",
     "esbuild": "^0.25.0",
     "eslint": "^9.30.0",
+    "openapi-typescript": "^7.13.0",
     "ovsx": "^0.10.4",
     "prettier": "^3.6.0",
     "typescript": "^5.8.0",
