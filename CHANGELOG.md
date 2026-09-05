@@ -2,10 +2,9 @@
 
 ## [0.2.0](https://github.com/airdress-co/airdress-vscode/compare/v0.1.0...v0.2.0) (2026-09-04)
 
-
 ### Features
 
-* first-contact connect flow and brand activity-bar mark ([256df93](https://github.com/airdress-co/airdress-vscode/commit/256df939a6bcc7a2ab2c5a49193923dffe0104d5))
+- first-contact connect flow and brand activity-bar mark ([256df93](https://github.com/airdress-co/airdress-vscode/commit/256df939a6bcc7a2ab2c5a49193923dffe0104d5))
 
 ## [0.1.0](https://github.com/airdress-co/airdress-vscode/compare/v0.0.2...v0.1.0) (2026-09-04)
 

@@ -1,6 +1,8 @@
 {
   "config": {
     "MD013": false,
+    // release-please repeats "### Features" under every release entry.
+    "MD024": { "siblings_only": true },
     "MD033": false,
     "MD041": false,
   },
