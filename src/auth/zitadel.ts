@@ -49,6 +49,14 @@ export interface AuthConfig {
    * operator (design §4.2).
    */
   scopes: string;
+  /**
+   * Base URL for the interactive authorization request. The hub serves
+   * a branded entry here and 302s to the IdP with the query passed
+   * through verbatim. Empty or unset falls back to
+   * `{issuer}/oauth/v2/authorize`. Token and JWKS stay on the issuer —
+   * only the interactive authorize hop is branded.
+   */
+  authorizeBase?: string;
 }
 
 /** Read the auth configuration, falling back to the shipped defaults. */
@@ -65,17 +73,27 @@ export function getAuthConfig(): AuthConfig {
       "openid profile email offline_access " +
         "urn:zitadel:iam:org:project:id:368173150459965108:aud",
     ),
+    authorizeBase: cfg.get<string>(
+      "authorizeBase",
+      "https://account.airdress.co/login/authorize",
+    ),
   };
 }
 
-/** Build the ZITADEL authorization URL (pure; unit-tested). */
+/**
+ * Build the authorization URL (pure; unit-tested). Uses the branded
+ * `authorizeBase` when set; otherwise the issuer's own authorize
+ * endpoint. The query is identical either way.
+ */
 export function buildAuthorizeUrl(
   cfg: AuthConfig,
   redirectUri: string,
   state: string,
   codeChallenge: string,
 ): string {
-  const url = new URL("/oauth/v2/authorize", cfg.issuer);
+  const url = cfg.authorizeBase
+    ? new URL(cfg.authorizeBase)
+    : new URL("/oauth/v2/authorize", cfg.issuer);
   url.searchParams.set("client_id", cfg.clientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
