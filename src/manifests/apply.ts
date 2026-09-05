@@ -56,6 +56,67 @@ export function problemToDiagnostic(err: ApiError): vscode.Diagnostic {
   return diagnostic;
 }
 
+/**
+ * Anchor a rejection `path` (e.g. `apiVersion`, `spec.backend`) to the
+ * matching key in the document. The search starts at `offset` so the
+ * anchor lands in the failing document of a multi-document file, and
+ * matches both YAML (`key:`) and JSON (`"key":`) spellings of the
+ * path's last segment. When the key cannot be found, fall back to the
+ * top of the file — a wrong-but-present diagnostic beats none.
+ */
+export function pathAnchorRange(
+  doc: vscode.TextDocument,
+  path: string,
+  offset: number,
+): vscode.Range {
+  const key = path
+    .split(/[./]/)
+    .filter((s) => s.length > 0)
+    .pop();
+  if (key && /^[\w-]+$/.test(key)) {
+    const re = new RegExp(`(?:^|\\n)[ \\t-]*"?(${key})"?\\s*:`, "g");
+    re.lastIndex = Math.max(0, offset - 1);
+    const m = re.exec(doc.getText());
+    if (m) {
+      const keyStart = m.index + m[0].lastIndexOf(m[1]);
+      return new vscode.Range(
+        doc.positionAt(keyStart),
+        doc.positionAt(keyStart + m[1].length),
+      );
+    }
+  }
+  return new vscode.Range(0, 0, 0, 1);
+}
+
+/**
+ * Map an apply failure onto the manifest as a diagnostic. Handles both
+ * error shapes the operator actually emits — RFC 7807 Problems
+ * (`title`/`detail`) and the manifest-rejection shape (`{error, path}`,
+ * e.g. HTTP 400 for an unsupported apiVersion) — showing the
+ * operator's own message verbatim either way. For the `{error, path}`
+ * shape the diagnostic is anchored to the offending key when findable.
+ */
+export function applyErrorDiagnostic(
+  err: ApiError,
+  doc: vscode.TextDocument,
+  offset: number,
+): vscode.Diagnostic {
+  if (err.problem.error === undefined) {
+    return problemToDiagnostic(err);
+  }
+  const range = err.problem.path
+    ? pathAnchorRange(doc, err.problem.path, offset)
+    : new vscode.Range(0, 0, 0, 1);
+  const diagnostic = new vscode.Diagnostic(
+    range,
+    err.problem.error,
+    vscode.DiagnosticSeverity.Error,
+  );
+  diagnostic.source = "airdress-operator";
+  diagnostic.code = err.problem.path;
+  return diagnostic;
+}
+
 function resultDiagnostics(
   doc: vscode.TextDocument,
   result: ValidationResult,
@@ -270,8 +331,10 @@ export async function applyManifest(
         ? ` Applied before the failure: ${applied.join(", ")}.`
         : "";
       if (err instanceof ApiError) {
-        // The operator's own title/detail, verbatim.
-        diagnostics.set(doc.uri, [problemToDiagnostic(err)]);
+        // The operator's own message, verbatim — whichever shape it used.
+        diagnostics.set(doc.uri, [
+          applyErrorDiagnostic(err, doc, planned.offset),
+        ]);
         void vscode.window.showErrorMessage(
           `Airdress: applying ${planned.kind}/${planned.name} to ${profile.fqdn} failed — see the diagnostic on the manifest.${done}`,
         );

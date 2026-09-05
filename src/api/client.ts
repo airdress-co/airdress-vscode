@@ -7,13 +7,23 @@ import type { Profile } from "../profiles/model";
  * else — never in an error, never in a log, never in a diagnostic.
  */
 
-/** RFC 7807 problem details, as the operator emits them. */
+/**
+ * Error body, as the operator emits it. Two shapes exist on the wire:
+ * RFC 7807 problem details (`title`/`detail`), and the operator's
+ * manifest-rejection shape — HTTP 400 with `{"error": "<message>",
+ * "path": "<json-path>"}`. Both are parsed into this one type; callers
+ * check which fields are present.
+ */
 export interface Problem {
   type?: string;
   title?: string;
   status?: number;
   detail?: string;
   instance?: string;
+  /** Rejection message from the `{error, path}` shape, verbatim. */
+  error?: string;
+  /** JSON path of the offending field from the `{error, path}` shape. */
+  path?: string;
 }
 
 export class ApiError extends Error {
@@ -21,7 +31,11 @@ export class ApiError extends Error {
     readonly problem: Problem,
     readonly httpStatus: number,
   ) {
-    super(problem.title ?? `Operator API error (HTTP ${httpStatus})`);
+    super(
+      problem.title ??
+        problem.error ??
+        `Operator API error (HTTP ${httpStatus})`,
+    );
     this.name = "ApiError";
   }
 }
@@ -58,6 +72,8 @@ export function parseProblem(body: unknown, httpStatus: number): Problem {
       status: typeof p.status === "number" ? p.status : httpStatus,
       detail: typeof p.detail === "string" ? p.detail : undefined,
       instance: typeof p.instance === "string" ? p.instance : undefined,
+      error: typeof p.error === "string" ? p.error : undefined,
+      path: typeof p.path === "string" ? p.path : undefined,
     };
   }
   return { status: httpStatus };

@@ -5,7 +5,11 @@ import * as vscode from "vscode";
 import { ApiError, baseUrlFor, parseProblem } from "../api/client";
 import { parseManifest, SchemaRegistry } from "../manifests/validate";
 import { AIRDRESS_SCHEME, LiveManifestProvider } from "../manifests/virtual";
-import { problemToDiagnostic } from "../manifests/apply";
+import {
+  applyErrorDiagnostic,
+  pathAnchorRange,
+  problemToDiagnostic,
+} from "../manifests/apply";
 
 const TEST_SCHEMA = {
   $id: "https://airdress.co/schemas/operator/testkind.v1.json",
@@ -136,6 +140,94 @@ suite("RFC 7807 Problem surfacing (T6-04)", () => {
     );
     assert.strictEqual(diagnostic.source, "airdress-operator");
     assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Error);
+  });
+});
+
+suite("`{error, path}` rejection surfacing", () => {
+  // The body a real operator (v0.1.28) returns for a bad apiVersion:
+  // HTTP 400, NOT an RFC 7807 Problem.
+  const REJECTION = {
+    error:
+      "unsupported apiVersion 'v1alpha1'; this operator speaks 'airdress.co/v1alpha1'",
+    path: "apiVersion",
+  };
+
+  async function yamlDoc(content: string): Promise<vscode.TextDocument> {
+    return vscode.workspace.openTextDocument({ language: "yaml", content });
+  }
+
+  test("parseProblem captures error and path", () => {
+    const p = parseProblem(REJECTION, 400);
+    assert.strictEqual(p.error, REJECTION.error);
+    assert.strictEqual(p.path, "apiVersion");
+    assert.strictEqual(p.title, undefined);
+  });
+
+  test("the error message lands VERBATIM, anchored to the offending key", async () => {
+    const doc = await yamlDoc(
+      "kind: TestKind\napiVersion: v1alpha1\nmetadata:\n  name: a\nspec: {}\n",
+    );
+    const diagnostic = applyErrorDiagnostic(
+      new ApiError(parseProblem(REJECTION, 400), 400),
+      doc,
+      0,
+    );
+    assert.strictEqual(diagnostic.message, REJECTION.error);
+    assert.strictEqual(diagnostic.source, "airdress-operator");
+    assert.strictEqual(diagnostic.code, "apiVersion");
+    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Error);
+    // Anchored on the `apiVersion` key (line 1), not line 0.
+    assert.strictEqual(diagnostic.range.start.line, 1);
+    assert.strictEqual(diagnostic.range.start.character, 0);
+    assert.strictEqual(diagnostic.range.end.character, "apiVersion".length);
+  });
+
+  test("anchoring matches the JSON spelling of the key", async () => {
+    const doc = await vscode.workspace.openTextDocument({
+      language: "json",
+      content: '{\n  "kind": "TestKind",\n  "apiVersion": "v1alpha1"\n}\n',
+    });
+    const range = pathAnchorRange(doc, "apiVersion", 0);
+    assert.strictEqual(range.start.line, 2);
+    assert.strictEqual(range.start.character, 3);
+  });
+
+  test("anchoring uses the last path segment and honours the doc offset", async () => {
+    const first =
+      "apiVersion: airdress.co/v1alpha1\nkind: TestKind\nmetadata:\n  name: a\nspec:\n  backend: echo\n";
+    const doc = await yamlDoc(
+      `${first}---\napiVersion: airdress.co/v1alpha1\nkind: TestKind\nmetadata:\n  name: b\nspec:\n  backend: bogus\n`,
+    );
+    // Offset points at the second document: the anchor must land on ITS
+    // `backend` key, not the first document's.
+    const range = pathAnchorRange(doc, "spec.backend", first.length + 4);
+    assert.strictEqual(range.start.line, 12);
+  });
+
+  test("a path that matches no key falls back to line 0", async () => {
+    const doc = await yamlDoc("kind: TestKind\nspec: {}\n");
+    const range = pathAnchorRange(doc, "no.such.key", 0);
+    assert.deepStrictEqual(range, new vscode.Range(0, 0, 0, 1));
+  });
+
+  test("Problem-shaped errors keep their title/detail handling", async () => {
+    const doc = await yamlDoc("kind: TestKind\n");
+    const diagnostic = applyErrorDiagnostic(
+      new ApiError(
+        parseProblem(
+          { title: "Invalid manifest", detail: "spec.backend unknown" },
+          422,
+        ),
+        422,
+      ),
+      doc,
+      0,
+    );
+    assert.strictEqual(
+      diagnostic.message,
+      "Invalid manifest — spec.backend unknown",
+    );
+    assert.strictEqual(diagnostic.source, "airdress-operator");
   });
 });
 
