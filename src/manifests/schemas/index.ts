@@ -1,4 +1,5 @@
 import type { KindSchema } from "../validate";
+import functionKind from "./function.json";
 import inferencePoolMember from "./inference-pool-member.json";
 
 /**
@@ -17,13 +18,24 @@ import inferencePoolMember from "./inference-pool-member.json";
  * listed here is reported as unknown with validation disabled — never
  * as valid.
  *
- * NOTE: `schemas/inference-pool-member.schema.json` (shipped for the
+ * NOTE: every `schemas/<kind>.schema.json` (shipped for the
  * yamlValidation/jsonValidation editor associations) must stay
- * byte-identical to `./inference-pool-member.json` — a test enforces
- * it, and the sync script writes both from the same bytes.
+ * byte-identical to its `./<kind>.json` twin — a test enforces it, and
+ * the sync script writes both from the same bytes.
+ *
+ * `./function.json` is the one exception to "never edit by hand", for
+ * now: the operator has not published `Function` yet, so it was seeded
+ * from the operator's contract. The sync script only rewrites kinds the
+ * index lists, so the seed survives a sync until the operator's next
+ * release publishes the kind — at which point `npm run sync:schemas`
+ * replaces the bytes and the exception ends.
  */
 export function bundledSchemas(): KindSchema[] {
   return [
+    {
+      kind: "Function",
+      schema: functionKind as KindSchema["schema"],
+    },
     {
       kind: "InferencePoolMember",
       schema: inferencePoolMember as KindSchema["schema"],

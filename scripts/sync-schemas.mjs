@@ -19,6 +19,15 @@
  * (schemas/operator-manifest.schema.json) has no pinned artifact and is
  * not synced either.
  *
+ * HAND-SEEDED, TEMPORARILY: `Function` (function.json /
+ * function.schema.json) was written by hand from the operator's
+ * contract because the operator has not published the kind yet. This
+ * script rewrites only the kinds the index lists, so the seed is left
+ * alone by a sync — and by CI's sync-check — until the operator's next
+ * release publishes `Function`, after which a run of this script
+ * replaces the seeded bytes with the published ones and the exception
+ * ends. Do not add a second hand-seeded kind without the same note.
+ *
  * Exit codes:
  *   0 — synced (files rewritten; may be a no-op)
  *   1 — real failure (bad index shape, write error, …)

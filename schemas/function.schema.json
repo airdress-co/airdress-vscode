@@ -1,0 +1,219 @@
+{
+  "$id": "https://schemas.airdress.co/operator/Function/v1.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "A resource manifest applied to an Airdress operator.",
+  "properties": {
+    "apiVersion": {
+      "const": "airdress.co/v1alpha1"
+    },
+    "kind": {
+      "const": "Function"
+    },
+    "metadata": {
+      "description": "The `metadata` block of a manifest.",
+      "properties": {
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "description": "Accepted for k8s familiarity but ignored — every operator manages one airdress's resources (one namespace).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resourceVersion": {
+          "description": "Optimistic concurrency token. When present, apply is rejected with 409 if the stored row's `resource_version` doesn't match. When absent, last-writer-wins.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "spec": {
+      "additionalProperties": false,
+      "description": "`spec` block of a `Function` manifest. The function is served at `POST /fn/<metadata.name>` on the operator.",
+      "properties": {
+        "bundle": {
+          "additionalProperties": false,
+          "description": "The WebAssembly component bundle the operator loads. The operator never fetches a bundle; it must already be present in the operator's `functions.d` directory.",
+          "properties": {
+            "path": {
+              "description": "Bare file name inside the operator's `functions.d` directory — no directory separators, no `.` or `..` segments.",
+              "minLength": 1,
+              "pattern": "^(?!\\.{1,2}$)[^/\\\\]+$",
+              "type": "string"
+            },
+            "sha256": {
+              "description": "Optional hex SHA-256 of the bundle bytes. When set, a bundle whose digest differs is refused at load time and the `Loaded` condition reports it.",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "signer": {
+              "description": "Optional hex ed25519 public key the bundle's detached signature must verify against. An unsigned bundle loads only if the operator allows unsigned functions.",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
+        "capabilities": {
+          "additionalProperties": false,
+          "description": "Capabilities granted to the function. Every world is closed by default; only `http` is live on this operator version.",
+          "properties": {
+            "http": {
+              "additionalProperties": false,
+              "description": "Outbound HTTP. `hosts` is an exact allowlist of FQDNs or operator alias keys — no wildcards.",
+              "properties": {
+                "hosts": {
+                  "description": "Hosts the function may reach. Each entry is an exact FQDN or an operator alias key; `*` is never accepted.",
+                  "items": {
+                    "minLength": 1,
+                    "pattern": "^[^*\\s]+$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "hosts"
+              ],
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "identity": {
+              "description": "Reserved capability world `identity`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "inbox": {
+              "description": "Reserved capability world `inbox`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "kv": {
+              "description": "Reserved capability world `kv`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "llm": {
+              "description": "Reserved capability world `llm`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "log": {
+              "description": "Reserved capability world `log`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "type": [
+                "object",
+                "null"
+              ]
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": true,
+          "description": "When `false`, the operator keeps the manifest but does not load the bundle or serve the route. Defaults to `true`.",
+          "type": "boolean"
+        },
+        "limits": {
+          "additionalProperties": false,
+          "description": "Per-invocation resource limits. Every field is optional and defaults on the operator.",
+          "properties": {
+            "concurrency": {
+              "default": 8,
+              "description": "Maximum concurrent invocations.",
+              "format": "uint32",
+              "maximum": 256,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "cpuDeadlineMs": {
+              "default": 5000,
+              "description": "CPU time budget per invocation in milliseconds; an invocation past it is cancelled.",
+              "format": "uint64",
+              "maximum": 60000,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "memoryMib": {
+              "default": 128,
+              "description": "Linear memory ceiling per instance in MiB.",
+              "format": "uint32",
+              "maximum": 4096,
+              "minimum": 16,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "runtime": {
+          "default": "wasm-component/v1",
+          "description": "Component model runtime. `wasm-component/v1` is the only value this operator version serves.",
+          "enum": [
+            "wasm-component/v1"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "Airdress operator Function manifest",
+  "type": "object",
+  "x-airdress-operator-version": "v0.1.59"
+}

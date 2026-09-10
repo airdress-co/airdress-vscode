@@ -10,6 +10,28 @@ function realRegistry(): SchemaRegistry {
   return new SchemaRegistry(bundledSchemas());
 }
 
+const FUNCTION_MANIFEST = [
+  "apiVersion: airdress.co/v1alpha1",
+  "kind: Function",
+  "metadata:",
+  "  name: relay-to-op2",
+  "spec:",
+  "  bundle:",
+  "    path: relay.tar.zst",
+  `    sha256: "${"ab".repeat(32)}"`,
+  `    signer: "${"cd".repeat(32)}"`,
+  "  runtime: wasm-component/v1",
+  "  capabilities:",
+  "    http:",
+  "      hosts:",
+  "        - op2.a.airdr.es",
+  "  limits:",
+  "    cpuDeadlineMs: 5000",
+  "    memoryMib: 128",
+  "    concurrency: 8",
+  "  enabled: true",
+].join("\n");
+
 function extensionRoot(): string {
   const ext = vscode.extensions.getExtension("airdress.airdress-vscode");
   assert.ok(ext);
@@ -123,17 +145,119 @@ suite("bundled operator-kind schemas (T6-05)", () => {
     assert.strictEqual(result.status, "unknown-kind");
   });
 
-  test("the bundled copy and the editor-association copy are byte-identical", () => {
-    const root = extensionRoot();
-    const bundled = fs.readFileSync(
-      path.join(root, "src/manifests/schemas/inference-pool-member.json"),
-      "utf8",
+  test("a grounded Function manifest validates", () => {
+    const result = realRegistry().validateText(FUNCTION_MANIFEST);
+    assert.deepStrictEqual(result.issues, []);
+    assert.strictEqual(result.status, "valid");
+  });
+
+  test("a minimal Function (bundle path only) validates — everything else defaults", () => {
+    const result = realRegistry().validateText(
+      [
+        "apiVersion: airdress.co/v1alpha1",
+        "kind: Function",
+        "metadata:",
+        "  name: hello",
+        "spec:",
+        "  bundle:",
+        "    path: hello.tar.zst",
+      ].join("\n"),
     );
-    const association = fs.readFileSync(
-      path.join(root, "schemas/inference-pool-member.schema.json"),
-      "utf8",
+    assert.strictEqual(result.status, "valid");
+  });
+
+  test("Function: an unknown spec field is invalid (deny_unknown_fields mirrored)", () => {
+    const result = realRegistry().validateText(
+      FUNCTION_MANIFEST + "\n  bogusField: true",
     );
-    assert.strictEqual(bundled, association);
+    assert.strictEqual(result.status, "invalid");
+    assert.ok(result.issues.some((i) => i.path.startsWith("/spec")));
+  });
+
+  test("Function: a bundle path with a directory separator or `..` is invalid", () => {
+    for (const bad of ["../escape.tar.zst", "dir/relay.tar.zst", ".."]) {
+      const result = realRegistry().validateText(
+        FUNCTION_MANIFEST.replace("path: relay.tar.zst", `path: "${bad}"`),
+      );
+      assert.strictEqual(result.status, "invalid", bad);
+      assert.ok(
+        result.issues.some((i) => i.path === "/spec/bundle/path"),
+        `${bad} must be rejected at spec.bundle.path`,
+      );
+    }
+  });
+
+  test("Function: a wildcard http host and an unknown runtime are invalid", () => {
+    const wildcard = realRegistry().validateText(
+      FUNCTION_MANIFEST.replace("- op2.a.airdr.es", '- "*.airdr.es"'),
+    );
+    assert.strictEqual(wildcard.status, "invalid");
+    const runtime = realRegistry().validateText(
+      FUNCTION_MANIFEST.replace(
+        "runtime: wasm-component/v1",
+        "runtime: native/v1",
+      ),
+    );
+    assert.strictEqual(runtime.status, "invalid");
+    assert.ok(runtime.issues.some((i) => i.path === "/spec/runtime"));
+  });
+
+  test("Function: a limit outside the schema's range and a missing bundle are invalid", () => {
+    const limit = realRegistry().validateText(
+      FUNCTION_MANIFEST.replace("memoryMib: 128", "memoryMib: 8"),
+    );
+    assert.strictEqual(limit.status, "invalid");
+    const noBundle = realRegistry().validateText(
+      [
+        "apiVersion: airdress.co/v1alpha1",
+        "kind: Function",
+        "metadata:",
+        "  name: hello",
+        "spec:",
+        "  enabled: true",
+      ].join("\n"),
+    );
+    assert.strictEqual(noBundle.status, "invalid");
+  });
+
+  for (const kind of ["inference-pool-member", "function"]) {
+    test(`${kind}: the bundled copy and the editor-association copy are byte-identical`, () => {
+      const root = extensionRoot();
+      const bundled = fs.readFileSync(
+        path.join(root, `src/manifests/schemas/${kind}.json`),
+        "utf8",
+      );
+      const association = fs.readFileSync(
+        path.join(root, `schemas/${kind}.schema.json`),
+        "utf8",
+      );
+      assert.strictEqual(bundled, association);
+    });
+  }
+
+  test("the envelope schema routes every bundled kind to its per-kind file", () => {
+    const envelope = JSON.parse(
+      fs.readFileSync(
+        path.join(extensionRoot(), "schemas/operator-manifest.schema.json"),
+        "utf8",
+      ),
+    ) as {
+      allOf: Array<{
+        if: { properties: { kind: { const: string } } };
+        then: { $ref: string };
+      }>;
+    };
+    const routed = new Map(
+      envelope.allOf.map((b) => [b.if.properties.kind.const, b.then.$ref]),
+    );
+    for (const { kind } of bundledSchemas()) {
+      const ref = routed.get(kind);
+      assert.ok(ref, `envelope schema must route kind ${kind}`);
+      assert.ok(
+        fs.existsSync(path.join(extensionRoot(), "schemas", ref)),
+        `${ref} must exist`,
+      );
+    }
   });
 });
 

@@ -36,6 +36,19 @@ import type {
  *   dropped or switched.
  */
 
+/** Kinds whose rows carry their own context value (menu targets). */
+const KIND_SPECIFIC_CONTEXT = new Set(["Function"]);
+
+/**
+ * `airdressResource` for every kind, `airdressResource.<Kind>` for the
+ * kinds that have a kind-specific action contributed against them.
+ */
+export function resourceContextValue(kind: string): string {
+  return KIND_SPECIFIC_CONTEXT.has(kind)
+    ? `airdressResource.${kind}`
+    : "airdressResource";
+}
+
 abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData> {
   protected readonly emitter = new vscode.EventEmitter<
     TreeNodeData | undefined
@@ -127,7 +140,9 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
               : "warning"
             : "symbol-object",
         );
-        item.contextValue = "airdressResource";
+        // Kind-specific context values let a menu item target one kind's
+        // rows only; every other kind keeps the generic value.
+        item.contextValue = resourceContextValue(node.resource.kind);
         item.command = {
           command: "airdress.resources.open",
           title: "Open Live Manifest (read-only)",
