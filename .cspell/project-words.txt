@@ -41,3 +41,5 @@ zitadel
 colour
 colours
 normalised
+schemars
+subschema

@@ -43,20 +43,20 @@
     },
     "spec": {
       "additionalProperties": false,
-      "description": "`spec` block of a `Function` manifest. The function is served at `POST /fn/<metadata.name>` on the operator.",
+      "description": "A hosted function: a signed WebAssembly component bundle the operator loads from its bundles directory and serves at /fn/<name>. The bundle's own manifest is the author's request; this block is the owner's grant, and a bundle asking for more than it is granted is refused rather than widened.",
       "properties": {
         "bundle": {
           "additionalProperties": false,
-          "description": "The WebAssembly component bundle the operator loads. The operator never fetches a bundle; it must already be present in the operator's `functions.d` directory.",
+          "description": "Which bundle to load, and the digest and signer to check it against.",
           "properties": {
             "path": {
-              "description": "Bare file name inside the operator's `functions.d` directory — no directory separators, no `.` or `..` segments.",
+              "description": "Bare filename of the .tar.zst bundle inside the operator's bundles directory. No directory separators and no parent references.",
               "minLength": 1,
               "pattern": "^(?!\\.{1,2}$)[^/\\\\]+$",
               "type": "string"
             },
             "sha256": {
-              "description": "Optional hex SHA-256 of the bundle bytes. When set, a bundle whose digest differs is refused at load time and the `Loaded` condition reports it.",
+              "description": "Expected SHA-256 of the compressed bundle file as 64 lowercase hex characters. When present the file must match it exactly.",
               "pattern": "^[0-9a-f]{64}$",
               "type": [
                 "string",
@@ -64,7 +64,7 @@
               ]
             },
             "signer": {
-              "description": "Optional hex ed25519 public key the bundle's detached signature must verify against. An unsigned bundle loads only if the operator allows unsigned functions.",
+              "description": "Ed25519 public key, 64 hex characters, that the bundle's detached signature must verify against. Required unless the operator explicitly allows unsigned local bundles.",
               "pattern": "^[0-9a-f]{64}$",
               "type": [
                 "string",
@@ -79,108 +79,161 @@
         },
         "capabilities": {
           "additionalProperties": false,
-          "description": "Capabilities granted to the function. Every world is closed by default; only `http` is live on this operator version.",
+          "default": {},
+          "description": "Capabilities the owner grants this function. The bundle's manifest may request a subset; requesting anything outside this block fails the load. Omitting the block grants nothing.",
           "properties": {
             "http": {
               "additionalProperties": false,
-              "description": "Outbound HTTP. `hosts` is an exact allowlist of FQDNs or operator alias keys — no wildcards.",
+              "description": "Outbound HTTP, limited to the listed hosts.",
               "properties": {
                 "hosts": {
-                  "description": "Hosts the function may reach. Each entry is an exact FQDN or an operator alias key; `*` is never accepted.",
+                  "default": [],
+                  "description": "Hosts the function may reach: exact hostnames or alias keys from the operator's curated table. Wildcards are not accepted here.",
                   "items": {
                     "minLength": 1,
                     "pattern": "^[^*\\s]+$",
                     "type": "string"
                   },
                   "type": "array"
+                },
+                "maxResponseMib": {
+                  "description": "Largest response body the function may read, in MiB. Default 8.",
+                  "format": "uint32",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 }
               },
-              "required": [
-                "hosts"
-              ],
               "type": [
                 "object",
                 "null"
               ]
             },
             "identity": {
-              "description": "Reserved capability world `identity`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "additionalProperties": false,
+              "description": "Reading the function's own identity and producing scoped signatures.",
               "type": [
                 "object",
                 "null"
               ]
             },
             "inbox": {
-              "description": "Reserved capability world `inbox`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "additionalProperties": false,
+              "description": "Publishing events to the operator's inbox, limited to the listed topics.",
+              "properties": {
+                "topics": {
+                  "default": [],
+                  "description": "Topics the function may publish to.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
               "type": [
                 "object",
                 "null"
               ]
             },
             "kv": {
-              "description": "Reserved capability world `kv`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "additionalProperties": false,
+              "description": "Key-value storage scoped to this function.",
+              "properties": {
+                "maxBytes": {
+                  "description": "Total bytes the namespace may hold.",
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "namespace": {
+                  "description": "Namespace the function is confined to. Default: the function's own name.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
               "type": [
                 "object",
                 "null"
               ]
             },
             "llm": {
-              "description": "Reserved capability world `llm`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "additionalProperties": false,
+              "description": "Model completions through the operator's configured providers.",
+              "properties": {
+                "models": {
+                  "default": [],
+                  "description": "Model identifiers the function may name.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "providers": {
+                  "default": [],
+                  "description": "Provider identifiers the function may use.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
               "type": [
                 "object",
                 "null"
               ]
             },
             "log": {
-              "description": "Reserved capability world `log`. Not yet available on this operator: a manifest that grants it is accepted by the schema and refused at apply time until the operator serves it.",
+              "additionalProperties": false,
+              "description": "Structured log lines into the operator's log.",
               "type": [
                 "object",
                 "null"
               ]
             }
           },
-          "type": [
-            "object",
-            "null"
-          ]
+          "type": "object"
         },
         "enabled": {
           "default": true,
-          "description": "When `false`, the operator keeps the manifest but does not load the bundle or serve the route. Defaults to `true`.",
+          "description": "Whether /fn/<name> is served. When false the bundle is still loaded and validated so a problem is reported, but no route is bound.",
           "type": "boolean"
         },
         "limits": {
           "additionalProperties": false,
-          "description": "Per-invocation resource limits. Every field is optional and defaults on the operator.",
+          "description": "Per-invocation limits. Each is clamped to the operator's own ceiling; omitting one keeps the operator default.",
           "properties": {
             "concurrency": {
-              "default": 8,
-              "description": "Maximum concurrent invocations.",
+              "description": "Concurrent invocations admitted before callers queue. Default 8; the operator clamps to its own ceiling.",
               "format": "uint32",
-              "maximum": 256,
-              "minimum": 1,
+              "maximum": 64.0,
+              "minimum": 1.0,
               "type": [
                 "integer",
                 "null"
               ]
             },
             "cpuDeadlineMs": {
-              "default": 5000,
-              "description": "CPU time budget per invocation in milliseconds; an invocation past it is cancelled.",
-              "format": "uint64",
-              "maximum": 60000,
-              "minimum": 1,
+              "description": "Wall-clock budget per invocation, in milliseconds. Default 5000; the operator clamps to its own ceiling.",
+              "format": "uint32",
+              "maximum": 30000.0,
+              "minimum": 1.0,
               "type": [
                 "integer",
                 "null"
               ]
             },
             "memoryMib": {
-              "default": 128,
-              "description": "Linear memory ceiling per instance in MiB.",
+              "description": "Linear memory ceiling per instance, in MiB. Default 128; the operator clamps to its own ceiling.",
               "format": "uint32",
-              "maximum": 4096,
-              "minimum": 16,
+              "maximum": 512.0,
+              "minimum": 16.0,
               "type": [
                 "integer",
                 "null"
@@ -194,10 +247,7 @@
         },
         "runtime": {
           "default": "wasm-component/v1",
-          "description": "Component model runtime. `wasm-component/v1` is the only value this operator version serves.",
-          "enum": [
-            "wasm-component/v1"
-          ],
+          "description": "Runtime tier. Only \"wasm-component/v1\" is accepted; the field exists so a second tier can be named without changing the manifest shape.",
           "type": "string"
         }
       },
@@ -215,5 +265,5 @@
   ],
   "title": "Airdress operator Function manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.59"
+  "x-airdress-operator-version": "v0.1.62"
 }
