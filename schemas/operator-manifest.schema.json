@@ -26,6 +26,15 @@
   "allOf": [
     {
       "if": {
+        "properties": { "kind": { "const": "Function" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "$ref": "./function.schema.json"
+      }
+    },
+    {
+      "if": {
         "properties": { "kind": { "const": "InferencePoolMember" } },
         "required": ["kind"]
       },

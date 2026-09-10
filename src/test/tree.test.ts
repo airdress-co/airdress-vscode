@@ -7,6 +7,7 @@ import {
   OperatorsTreeProvider,
   PrincipalsTreeProvider,
   ResourcesTreeProvider,
+  resourceContextValue,
 } from "../tree/provider";
 import { OwnershipTracker } from "../tree/ownership";
 import { decodeKinds } from "../tree/fetchers";
@@ -80,7 +81,7 @@ const PRINCIPAL: PrincipalMeta = {
 
 function fetchers(overrides?: Partial<TreeFetchers>): TreeFetchers {
   return {
-    listKinds: async () => ["InferencePoolMember", "MysteryKind"],
+    listKinds: async () => ["InferencePoolMember", "Function", "MysteryKind"],
     listResources: async (_p, kind) => [{ kind, name: "member-a" }],
     listPrincipals: async () => [PRINCIPAL],
     listEnrollments: async () => [
@@ -141,7 +142,7 @@ suite("resources view (active profile scoped)", () => {
     );
     const roots = await provider.getChildren();
     const kinds = roots.filter((r) => r.type === "kind");
-    assert.strictEqual(kinds.length, 2);
+    assert.strictEqual(kinds.length, 3);
     const enrollments = roots.find(
       (r) => r.type === "section" && r.section === "enrollments",
     );
@@ -150,6 +151,27 @@ suite("resources view (active profile scoped)", () => {
     assert.strictEqual(resource.type, "resource");
     const item = provider.getTreeItem(resource);
     assert.strictEqual(item.command?.command, "airdress.resources.open");
+  });
+
+  test("Function rows carry a kind-specific context value; other kinds keep the generic one", async () => {
+    const provider = new ResourcesTreeProvider(
+      await storeWith(OWNER_PROFILE),
+      fetchers(),
+    );
+    const roots = await provider.getChildren();
+    const byKind = (kind: string) =>
+      roots.find((r) => r.type === "kind" && r.kind === kind)!;
+    const [fn] = await provider.getChildren(byKind("Function"));
+    const [member] = await provider.getChildren(byKind("InferencePoolMember"));
+    assert.strictEqual(
+      provider.getTreeItem(fn).contextValue,
+      "airdressResource.Function",
+    );
+    assert.strictEqual(
+      provider.getTreeItem(member).contextValue,
+      "airdressResource",
+    );
+    assert.strictEqual(resourceContextValue("MysteryKind"), "airdressResource");
   });
 
   test("kinds without a bundled schema are marked unknown, validation disabled", async () => {
