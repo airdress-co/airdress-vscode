@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- `Function` is a known kind: validated on apply, diffed against live, drift-scanned,
+  rendered as known in the Resources view. Its schema is hand-seeded from
+  the operator's contract until the operator publishes it.
+- Function configuration panel (the extension's first webview): overview
+  with phase and conditions, bundle, permissions, limits, the fixed
+  `POST /fn/<name>` trigger with a test invoke, disable and delete. The
+  form is derived from the bundled schema; Apply and Diff reuse the
+  existing manifest commands. Opened from a Function row's gear
+  ("Airdress: Configure Function") or from "Airdress: New Function…".
+
 ## [0.2.0](https://github.com/airdress-co/airdress-vscode/compare/v0.1.0...v0.2.0) (2026-09-04)
 
 ### Features
