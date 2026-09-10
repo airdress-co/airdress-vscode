@@ -1,0 +1,337 @@
+/*
+ * Function configuration panel — the ONLY place layout and colour for
+ * the panel live. Theme colours come from VS Code's own variables so
+ * the panel follows the editor's theme; a restyle edits this file and
+ * nothing else.
+ */
+
+:root {
+  --gap: 0.75rem;
+  --radius: 4px;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  margin: 0;
+  padding: 0 1.5rem 3rem;
+  line-height: 1.5;
+}
+
+main {
+  max-width: 56rem;
+}
+
+h1 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 var(--gap);
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap);
+}
+
+.busy {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+.section {
+  margin: 1.5rem 0;
+}
+
+.section-danger {
+  border: 1px solid var(--vscode-inputValidation-errorBorder);
+  border-radius: var(--radius);
+  padding: var(--gap);
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  gap: 0.25rem var(--gap);
+  align-items: start;
+  margin-bottom: var(--gap);
+}
+
+.field-label {
+  font-weight: 500;
+  padding-top: 0.2rem;
+}
+
+.field-required {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 400;
+  font-size: 0.85em;
+}
+
+.field-help,
+.field-unavailable,
+.field-diagnostics,
+.string-list,
+.string-list-add {
+  grid-column: 2;
+}
+
+.field-help {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.field-unavailable {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+.field-disabled {
+  opacity: 0.7;
+}
+
+.field-invalid input,
+.field-invalid select {
+  border-color: var(--vscode-inputValidation-errorBorder);
+}
+
+.field-diagnostics:empty {
+  display: none;
+}
+
+.diagnostic {
+  margin: 0.15rem 0;
+  color: var(--vscode-errorForeground);
+  font-size: 0.9em;
+}
+
+.diagnostic-ok {
+  color: var(--vscode-testing-iconPassed, var(--vscode-descriptionForeground));
+}
+
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+
+textarea {
+  font-family: var(--vscode-editor-font-family);
+  resize: vertical;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+button.primary {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+button.primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button.danger {
+  color: var(--vscode-errorForeground);
+  border: 1px solid var(--vscode-inputValidation-errorBorder);
+  background: transparent;
+}
+
+button.small {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.9em;
+}
+
+button:disabled,
+.is-busy button {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
+
+.actions {
+  display: flex;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+
+.actions-main {
+  position: sticky;
+  bottom: 0;
+  padding: var(--gap) 0;
+  background: var(--vscode-editor-background);
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.string-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.string-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  margin-bottom: 0.25rem;
+}
+
+.string-list-add {
+  display: flex;
+  gap: var(--gap);
+}
+
+code,
+.route {
+  font-family: var(--vscode-editor-font-family);
+  background: var(--vscode-textCodeBlock-background);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius);
+}
+
+.phase {
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius);
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+
+.phase-healthy {
+  background: var(--vscode-testing-iconPassed);
+  color: var(--vscode-editor-background);
+}
+
+.phase-failed {
+  background: var(--vscode-errorForeground);
+  color: var(--vscode-editor-background);
+}
+
+.conditions {
+  border-collapse: collapse;
+  width: 100%;
+  margin: var(--gap) 0;
+}
+
+.conditions th,
+.conditions td {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  vertical-align: top;
+}
+
+.condition-false td:nth-child(2) {
+  color: var(--vscode-errorForeground);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  gap: 0.25rem var(--gap);
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--vscode-descriptionForeground);
+}
+
+.facts dd {
+  margin: 0;
+  font-family: var(--vscode-editor-font-family);
+  word-break: break-all;
+}
+
+.invoke {
+  display: grid;
+  gap: var(--gap);
+}
+
+.invoke button {
+  justify-self: start;
+}
+
+.invoke-result {
+  margin: 0;
+  padding: var(--gap);
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 20rem;
+  overflow: auto;
+}
+
+.notice {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  border-left: 3px solid var(--vscode-focusBorder);
+  background: var(--vscode-textBlockQuote-background);
+}
+
+.notice-error {
+  border-left-color: var(--vscode-errorForeground);
+}
+
+.muted {
+  color: var(--vscode-descriptionForeground);
+}
+
+@media (max-width: 40rem) {
+  .field,
+  .facts {
+    grid-template-columns: 1fr;
+  }
+
+  .field-help,
+  .field-unavailable,
+  .field-diagnostics,
+  .string-list,
+  .string-list-add {
+    grid-column: 1;
+  }
+}

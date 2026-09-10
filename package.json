@@ -279,7 +279,7 @@
   "scripts": {
     "compile": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.webview.json",
     "lint": "eslint src && prettier --check .",
     "compile-tests": "tsc -p tsconfig.test.json",
     "pretest": "npm run compile-tests && npm run compile",
