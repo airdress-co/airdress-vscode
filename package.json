@@ -93,6 +93,15 @@
       {
         "command": "airdress.drift.scan",
         "title": "Airdress: Detect Drift (Workspace)"
+      },
+      {
+        "command": "airdress.functions.configure",
+        "title": "Airdress: Configure Function",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "airdress.functions.new",
+        "title": "Airdress: New Function…"
       }
     ],
     "viewsContainers": {
@@ -152,6 +161,10 @@
         {
           "command": "airdress.principals.bind",
           "when": "false"
+        },
+        {
+          "command": "airdress.functions.configure",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -186,6 +199,16 @@
           "command": "airdress.principals.revoke",
           "when": "view == airdress.principals && viewItem == airdressPrincipal",
           "group": "9_destructive@1"
+        },
+        {
+          "command": "airdress.functions.configure",
+          "when": "view == airdress.resources && viewItem == airdressResource.Function",
+          "group": "inline"
+        },
+        {
+          "command": "airdress.functions.configure",
+          "when": "view == airdress.resources && viewItem == airdressResource.Function",
+          "group": "1_actions@1"
         }
       ]
     },

@@ -38,6 +38,11 @@ import { HealthPoller } from "./health/poller";
 import { StatusCache } from "./health/statusCache";
 import type { TreeNodeData } from "./tree/nodes";
 import { clientFor } from "./manifests/diff";
+import {
+  newFunctionCommand,
+  openFunctionPanel,
+  type FunctionPanelDeps,
+} from "./webview/panel";
 import * as YAML from "yaml";
 
 /**
@@ -171,6 +176,11 @@ export function activate(context: vscode.ExtensionContext): void {
     const id = profiles.activeId();
     return id ? profiles.get(id) : undefined;
   }
+
+  const functionPanelDeps: FunctionPanelDeps = {
+    manifest: manifestDeps,
+    extensionUri: context.extensionUri,
+  };
 
   function refreshAllViews(): void {
     operatorsTree.refresh();
@@ -487,6 +497,29 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("airdress.drift.scan", async () => {
       await detectWorkspaceDrift(manifestDeps);
+    }),
+
+    // Function configuration panel. The context-menu entry is contributed
+    // ONLY against Function rows (viewItem == airdressResource.Function)
+    // and hidden from the palette; the palette entry opens an empty
+    // draft after an explicit profile pick. Apply from the panel goes
+    // through the same applyManifest flow as a file — one apply path.
+    vscode.commands.registerCommand(
+      "airdress.functions.configure",
+      async (node: TreeNodeData) => {
+        if (node?.type !== "resource" || node.resource.kind !== "Function") {
+          return;
+        }
+        await openFunctionPanel(
+          functionPanelDeps,
+          node.profile,
+          node.resource.name,
+        );
+      },
+    ),
+
+    vscode.commands.registerCommand("airdress.functions.new", async () => {
+      await newFunctionCommand(functionPanelDeps);
     }),
 
     // Break-glass has an EXIT, one click away — and no mint action:
