@@ -57,6 +57,58 @@ function typesOf(schema: Schema): { types: Set<string>; nullable: boolean } {
   return { types, nullable: list.includes("null") };
 }
 
+/** A branch that only says `"type": "null"` (or `["null"]`) — no shape. */
+function isNullBranch(schema: Schema): boolean {
+  const { types, nullable } = typesOf(schema);
+  return (
+    nullable &&
+    types.size === 0 &&
+    schema.properties === undefined &&
+    schema.items === undefined &&
+    schema.enum === undefined
+  );
+}
+
+/**
+ * Collapse a nullable subschema written as `anyOf`/`oneOf: [ <shape>,
+ * {"type":"null"} ]` down to the shape plus a nullable flag — the form
+ * that schemars emits for an `Option<T>` when it does not fold the null
+ * into a `type` array. When exactly one non-null branch remains it is
+ * merged over the wrapper's own keywords (so a `description` carried
+ * beside the `anyOf` survives), matching the `type: [..., "null"]` form
+ * the walker already understands. `$ref` is never followed — the
+ * published per-kind schemas inline everything, and a branch hidden
+ * behind a `$ref` is left unresolved so the field falls through to
+ * "opaque", which is the safe, disabled default. Anything with two or
+ * more real branches is likewise left alone.
+ */
+function resolveNullable(schema: Schema): {
+  schema: Schema;
+  nullable: boolean;
+} {
+  const raw = Array.isArray(schema.anyOf)
+    ? schema.anyOf
+    : Array.isArray(schema.oneOf)
+      ? schema.oneOf
+      : undefined;
+  if (!raw) {
+    return { schema, nullable: false };
+  }
+  const branches = raw.filter(isRecord);
+  const nonNull = branches.filter((b) => !isNullBranch(b));
+  const nullable = nonNull.length !== branches.length;
+  if (nonNull.length !== 1) {
+    return { schema, nullable };
+  }
+  const rest: Schema = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key !== "anyOf" && key !== "oneOf") {
+      rest[key] = value;
+    }
+  }
+  return { schema: { ...rest, ...nonNull[0] }, nullable };
+}
+
 /** "cpuDeadlineMs" -> "Cpu deadline ms"; "sha256" -> "Sha256". */
 export function labelFor(key: string): string {
   const spaced = key
@@ -80,7 +132,8 @@ function fieldKind(schema: Schema, types: Set<string>): FormFieldKind {
     return "number";
   }
   if (types.has("array")) {
-    const items = isRecord(schema.items) ? schema.items : {};
+    const rawItems = isRecord(schema.items) ? schema.items : {};
+    const items = resolveNullable(rawItems).schema;
     return typesOf(items).types.has("string") ? "string-list" : "opaque";
   }
   if (types.has("string")) {
@@ -90,13 +143,20 @@ function fieldKind(schema: Schema, types: Set<string>): FormFieldKind {
 }
 
 function walk(
-  schema: Schema,
+  rawSchema: Schema,
   path: string[],
   group: string,
   required: boolean,
   out: FormField[],
 ): void {
-  const { types, nullable } = typesOf(schema);
+  // An `anyOf`/`oneOf` nullable wrapper is collapsed to its single
+  // shaped branch first, so a world (or leaf) written that way is
+  // walked exactly as its `type: [..., "null"]` twin would be.
+  const resolved = resolveNullable(rawSchema);
+  const schema = resolved.schema;
+  const typeInfo = typesOf(schema);
+  const types = typeInfo.types;
+  const nullable = typeInfo.nullable || resolved.nullable;
   const properties = isRecord(schema.properties)
     ? schema.properties
     : undefined;
@@ -122,7 +182,9 @@ function walk(
     return;
   }
   const kind = fieldKind(schema, types);
-  const items = isRecord(schema.items) ? schema.items : undefined;
+  const items = isRecord(schema.items)
+    ? resolveNullable(schema.items).schema
+    : undefined;
   const constraints = kind === "string-list" && items ? items : schema;
   const field: FormField = {
     path,

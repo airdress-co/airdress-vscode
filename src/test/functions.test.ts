@@ -482,31 +482,114 @@ suite("Function panel: form derived from the bundled schema", () => {
 
     const memory = at("limits.memoryMib");
     assert.strictEqual(memory?.kind, "integer");
+    // schemars stamps `format: uint32` beside the bounds; min/max must
+    // be read regardless of the format keyword.
     assert.strictEqual(memory?.minimum, 16);
-    assert.strictEqual(memory?.maximum, 4096);
-    assert.strictEqual(memory?.default, 128);
+    assert.strictEqual(memory?.maximum, 512);
+    // The published schema carries no JSON `default` on the limits —
+    // the default ("128") lives in the description and is applied by
+    // the operator, not the manifest.
+    assert.strictEqual(memory?.default, undefined);
     // limits itself is optional, so its leaves are never "required".
     assert.strictEqual(memory?.required, false);
 
+    // `runtime` is a plain string in the published schema (the sole
+    // accepted tier is enforced by the operator, not the schema), so it
+    // derives as a string field rather than a one-value enum.
     const runtime = at("runtime");
-    assert.strictEqual(runtime?.kind, "enum");
-    assert.deepStrictEqual(runtime?.enum, ["wasm-component/v1"]);
+    assert.strictEqual(runtime?.kind, "string");
+    assert.strictEqual(runtime?.default, "wasm-component/v1");
+
+    // enum derivation still works where the schema actually declares one.
+    const enumFields = deriveSpecFields({
+      properties: {
+        spec: {
+          type: "object",
+          properties: { tier: { type: "string", enum: ["a", "b"] } },
+        },
+      },
+    });
+    assert.strictEqual(enumFields[0]?.kind, "enum");
+    assert.deepStrictEqual(enumFields[0]?.enum, ["a", "b"]);
 
     assert.strictEqual(at("enabled")?.kind, "boolean");
     assert.strictEqual(at("enabled")?.default, true);
   });
 
-  test("http hosts is a string list; worlds without a shape are opaque, so the form draws them disabled", () => {
+  test("http hosts is a string list; a world with no shape is opaque, so the form draws it disabled", () => {
     const hosts = at("capabilities.http.hosts");
     assert.strictEqual(hosts?.kind, "string-list");
     assert.ok(hosts?.pattern, "the no-wildcard pattern reaches the items");
-    for (const world of ["kv", "inbox", "identity", "llm", "log"]) {
+
+    // `identity` and `log` are empty objects in the published schema —
+    // no inner shape — so they derive as a single opaque field the form
+    // draws disabled ("not yet available on this operator").
+    for (const world of ["identity", "log"]) {
       assert.strictEqual(
         at(`capabilities.${world}`)?.kind,
         "opaque",
         `${world} must be opaque`,
       );
     }
+
+    // `kv`, `inbox` and `llm` DO carry inner shape now, so the walker
+    // descends into them rather than drawing one opaque box — the form
+    // follows the schema. Each world's own leaves become fields.
+    for (const world of ["kv", "inbox", "llm"]) {
+      assert.strictEqual(
+        at(`capabilities.${world}`),
+        undefined,
+        `${world} has a shape, so it is not a single opaque field`,
+      );
+    }
+    assert.strictEqual(at("capabilities.kv.maxBytes")?.kind, "integer");
+    assert.strictEqual(at("capabilities.kv.namespace")?.kind, "string");
+    assert.strictEqual(at("capabilities.inbox.topics")?.kind, "string-list");
+    assert.strictEqual(at("capabilities.llm.models")?.kind, "string-list");
+    assert.strictEqual(at("capabilities.llm.providers")?.kind, "string-list");
+  });
+
+  test("a capability world written as an anyOf-nullable wrapper is seen through", () => {
+    // schemars can emit an Option<World> as anyOf: [ <object>, {null} ]
+    // rather than type: [object, null]. The walker must collapse that
+    // to the shaped branch: http.hosts is still found as a string list,
+    // and an empty-object world is still opaque.
+    const derived = deriveSpecFields({
+      properties: {
+        spec: {
+          type: "object",
+          properties: {
+            capabilities: {
+              type: "object",
+              properties: {
+                http: {
+                  anyOf: [
+                    {
+                      type: "object",
+                      properties: {
+                        hosts: {
+                          type: "array",
+                          items: { type: "string", pattern: "^[^*\\s]+$" },
+                        },
+                      },
+                    },
+                    { type: "null" },
+                  ],
+                },
+                log: {
+                  anyOf: [{ type: "object" }, { type: "null" }],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const by = (p: string) => derived.find((f) => f.path.join(".") === p);
+    assert.strictEqual(by("capabilities.http.hosts")?.kind, "string-list");
+    assert.ok(by("capabilities.http.hosts")?.pattern);
+    assert.strictEqual(by("capabilities.log")?.kind, "opaque");
+    assert.strictEqual(by("capabilities.log")?.nullable, true);
   });
 
   test("the derivation follows the schema, not a hard-coded list", () => {

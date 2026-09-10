@@ -101,6 +101,25 @@ export class SchemaRegistry {
 
   constructor(schemas: KindSchema[]) {
     const ajv = new Ajv({ allErrors: true, strict: false });
+    // schemars annotates every Rust integer field with a numeric
+    // `format` (`uint32`/`uint64`, …) alongside its `minimum`/`maximum`.
+    // Ajv has no built-in numeric formats, so each one it meets is
+    // logged as `unknown format … ignored` — harmless, but noisy in the
+    // extension's output. Register them as no-ops: the real bound is
+    // carried by `minimum`/`maximum`, which Ajv already enforces, so a
+    // format that always passes costs nothing and quiets the log.
+    for (const fmt of [
+      "uint",
+      "int",
+      "uint32",
+      "int32",
+      "uint64",
+      "int64",
+      "float",
+      "double",
+    ]) {
+      ajv.addFormat(fmt, true);
+    }
     for (const { kind, schema } of schemas) {
       this.validators.set(kind, ajv.compile(schema));
       this.pins.set(kind, schema["x-airdress-operator-version"]);

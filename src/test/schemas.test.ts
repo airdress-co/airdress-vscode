@@ -187,19 +187,31 @@ suite("bundled operator-kind schemas (T6-05)", () => {
     }
   });
 
-  test("Function: a wildcard http host and an unknown runtime are invalid", () => {
+  test("Function: a wildcard http host is invalid", () => {
     const wildcard = realRegistry().validateText(
       FUNCTION_MANIFEST.replace("- op2.a.airdr.es", '- "*.airdr.es"'),
     );
     assert.strictEqual(wildcard.status, "invalid");
+    assert.ok(
+      wildcard.issues.some((i) =>
+        i.path.startsWith("/spec/capabilities/http/hosts"),
+      ),
+    );
+  });
+
+  test("Function: runtime is not gated by the schema — the operator refuses an unknown tier at apply time", () => {
+    // The published schema types `runtime` as a plain string (its
+    // description says only `wasm-component/v1` is served, but the
+    // enum lives on the operator, not the manifest schema). So a
+    // second tier name validates here and is refused later on apply —
+    // the hand-seeded schema wrongly encoded the enum in the schema.
     const runtime = realRegistry().validateText(
       FUNCTION_MANIFEST.replace(
         "runtime: wasm-component/v1",
         "runtime: native/v1",
       ),
     );
-    assert.strictEqual(runtime.status, "invalid");
-    assert.ok(runtime.issues.some((i) => i.path === "/spec/runtime"));
+    assert.strictEqual(runtime.status, "valid");
   });
 
   test("Function: a limit outside the schema's range and a missing bundle are invalid", () => {
