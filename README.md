@@ -44,6 +44,10 @@ operator's OpenAPI contract and committed (no build-time cross-repo
 reach). To regenerate against a newer contract:
 `OPENAPI_PATH=/path/to/openapi.yaml OPENAPI_SHA=<contract commit> npm run generate:api`.
 
+To run the extension itself while you work on it — interactively with
+F5, or isolated from your daily profile via the command line — see
+[CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ## Layout
 
 - `src/extension.ts` — activation: registers providers; no network calls.
