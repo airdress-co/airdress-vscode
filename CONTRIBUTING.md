@@ -65,6 +65,15 @@ Useful for exercising the extension without touching your main profile
 at all — a clean slate for testing sign-in and profile-switching from
 scratch, or for driving it from a script.
 
+The ready-made form is `tools/dev-host/launch.sh`: it starts the dev
+host with this extension **and** the file-drop driver loaded, with all
+state under `<repo>/.dev-host/` (gitignored). That directory holds the
+sign-in, so it survives launches and reboots — a scratch directory
+under `/tmp` did not, and took a signed-in host with it on 2026-09-13.
+`tools/dev-host/vsc.sh --info` tells you the driver answers;
+`tools/dev-host/vsc.sh <command> '[json args]'` runs a command.
+Delete `.dev-host/` to start from nothing. The manual form:
+
 ```sh
 npm run watch &   # keep dist/ rebuilding in the background
 
@@ -114,11 +123,13 @@ these are the walls, measured on 2026-09-12:
 
 - **Drive commands by file drop, not by a listener.** To run
   `vscode.commands.executeCommand` from outside the window, the shape
-  that works is a tiny second dev extension that watches a private
-  scratch directory for `cmd-*.json`, executes the command, and writes
-  the reply beside it, and a command that takes a tree node can be
-  handed one as JSON. The same driver with an HTTP control port is an
-  RCE surface; do not rebuild it that way.
+  that works is a tiny second dev extension
+  (`tools/dev-host/driver-ext/`) that watches a private directory
+  (`.dev-host/driver-io`, mode 0700) for `cmd-*.json`, executes the
+  command, and writes the reply beside it; a command that takes a tree
+  node can be handed one as JSON, and `--diagnostics` dumps the
+  workbench's diagnostics. The same driver with an HTTP control port is
+  an RCE surface; do not rebuild it that way.
 
 - **What `executeCommand` cannot reach:** a quick-pick (measured
   2026-09-13: `workbench.action.acceptSelectedQuickOpenItem` left the
