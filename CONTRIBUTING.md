@@ -29,6 +29,14 @@ That is the whole change. The tests derive their Kind lists from
 `bundledSchemas()`, so the twin check and the envelope-routing check
 cover the new Kind without being told.
 
+You will usually learn that a Kind has arrived from the pre-commit hook
+`bundled schemas match the published pins`: it runs
+`node scripts/sync-schemas.mjs --check` on every commit, and reports a
+published Kind this repo has never bundled as `MISSING` and a moved pin
+as `DRIFT`. CI runs the same check. An unreachable upstream is a loud
+skip, not a failure — a hook that blocks commits on a network flake gets
+disabled, and then catches nothing.
+
 Only if the Kind carries an affordance plain CRUD does not — the way
 `Function` has an invoke trigger and a bundle on disk — does it get an
 entry in `src/webview/kinds.ts`. That table is deliberately closed and
