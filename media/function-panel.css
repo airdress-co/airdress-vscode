@@ -103,7 +103,9 @@ h2 {
 }
 
 .field-invalid input,
-.field-invalid select {
+.field-invalid select,
+.field-invalid textarea,
+textarea.field-invalid {
   border-color: var(--vscode-inputValidation-errorBorder);
 }
 
@@ -334,4 +336,19 @@ code,
   .string-list-add {
     grid-column: 1;
   }
+}
+
+/*
+ * The raw-YAML spec editor, shown for a Kind the operator has
+ * published no schema for. Monospace and full width because it holds
+ * structured text a person indents by hand; it borrows the invalid state
+ * above, so unparseable input is visible without a diagnostics round trip.
+ */
+.spec-yaml {
+  width: 100%;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 12px);
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
 }

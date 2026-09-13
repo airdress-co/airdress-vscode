@@ -3,3 +3,6 @@ dist/
 out/
 *.vsix
 .vscode-test/
+
+# Symlink to the central specs repo (the extension's specs live in airdress-specs/airdress-vscode)
+.spec-workflow

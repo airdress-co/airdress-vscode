@@ -232,7 +232,13 @@ suite("bundled operator-kind schemas (T6-05)", () => {
     assert.strictEqual(noBundle.status, "invalid");
   });
 
-  for (const kind of ["inference-pool-member", "function"]) {
+  // Derived from the bundle, not hand-listed: a Kind added to index.ts
+  // is covered the moment it lands. (Schedule arrived in v0.1.64 and a
+  // hand-written list would have let it through unchecked.)
+  const kebabKinds = bundledSchemas().map(({ kind }) =>
+    kind.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase(),
+  );
+  for (const kind of kebabKinds) {
     test(`${kind}: the bundled copy and the editor-association copy are byte-identical`, () => {
       const root = extensionRoot();
       const bundled = fs.readFileSync(

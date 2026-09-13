@@ -41,6 +41,15 @@
       "then": {
         "$ref": "./inference-pool-member.schema.json"
       }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "Schedule" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "$ref": "./schedule.schema.json"
+      }
     }
   ]
 }

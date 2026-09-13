@@ -1,6 +1,7 @@
 import type { KindSchema } from "../validate";
 import functionKind from "./function.json";
 import inferencePoolMember from "./inference-pool-member.json";
+import schedule from "./schedule.json";
 
 /**
  * Bundled per-kind JSON Schemas.
@@ -23,12 +24,13 @@ import inferencePoolMember from "./inference-pool-member.json";
  * byte-identical to its `./<kind>.json` twin — a test enforces it, and
  * the sync script writes both from the same bytes.
  *
- * `./function.json` is the one exception to "never edit by hand", for
- * now: the operator has not published `Function` yet, so it was seeded
- * from the operator's contract. The sync script only rewrites kinds the
- * index lists, so the seed survives a sync until the operator's next
- * release publishes the kind — at which point `npm run sync:schemas`
- * replaces the bytes and the exception ends.
+ * Adding a Kind is two lines here (the import and the entry) once the
+ * operator publishes its schema, plus one `if`/`then` arm in
+ * `schemas/operator-manifest.schema.json` so the editor association
+ * dispatches to it. Nothing else in the extension names the Kind: the
+ * resource panel draws its form from whatever schema this
+ * list returns, and a Kind missing here still gets the panel in
+ * raw-YAML mode.
  */
 export function bundledSchemas(): KindSchema[] {
   return [
@@ -39,6 +41,10 @@ export function bundledSchemas(): KindSchema[] {
     {
       kind: "InferencePoolMember",
       schema: inferencePoolMember as KindSchema["schema"],
+    },
+    {
+      kind: "Schedule",
+      schema: schedule as KindSchema["schema"],
     },
   ];
 }

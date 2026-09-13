@@ -102,6 +102,21 @@
       {
         "command": "airdress.functions.new",
         "title": "Airdress: New Function…"
+      },
+      {
+        "command": "airdress.resources.create",
+        "title": "Airdress: New Resource…",
+        "icon": "$(add)"
+      },
+      {
+        "command": "airdress.resources.edit",
+        "title": "Airdress: Edit Resource",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "airdress.resources.delete",
+        "title": "Airdress: Delete Resource",
+        "icon": "$(trash)"
       }
     ],
     "viewsContainers": {
@@ -165,6 +180,14 @@
         {
           "command": "airdress.functions.configure",
           "when": "false"
+        },
+        {
+          "command": "airdress.resources.edit",
+          "when": "false"
+        },
+        {
+          "command": "airdress.resources.delete",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -179,9 +202,14 @@
           "group": "navigation"
         },
         {
+          "command": "airdress.resources.create",
+          "when": "view == airdress.resources",
+          "group": "navigation@1"
+        },
+        {
           "command": "airdress.resources.refresh",
           "when": "view == airdress.resources",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -209,6 +237,21 @@
           "command": "airdress.functions.configure",
           "when": "view == airdress.resources && viewItem == airdressResource.Function",
           "group": "1_actions@1"
+        },
+        {
+          "command": "airdress.resources.edit",
+          "when": "view == airdress.resources && viewItem =~ /^airdressResource/",
+          "group": "inline"
+        },
+        {
+          "command": "airdress.resources.edit",
+          "when": "view == airdress.resources && viewItem =~ /^airdressResource/",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "airdress.resources.delete",
+          "when": "view == airdress.resources && viewItem =~ /^airdressResource/",
+          "group": "9_destructive@1"
         }
       ]
     },

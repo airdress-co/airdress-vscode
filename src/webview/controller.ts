@@ -1,19 +1,20 @@
 import * as YAML from "yaml";
 import type { SchemaRegistry } from "../manifests/validate";
 import {
-  emptyFunctionManifest,
+  emptyManifest,
   functionRoute,
   parsePanelMessage,
-  type FunctionStatus,
+  type ResourceStatus,
   type HostMessage,
   type InvocationResult,
   type ManifestObject,
   type PanelDiagnostic,
 } from "./protocol";
+import { capabilitiesFor } from "./kinds";
 
 /**
  * The Function panel's state machine, with everything that touches
- * VS Code or the network behind the {@link FunctionPanelHost} seam —
+ * VS Code or the network behind the {@link ResourcePanelHost} seam —
  * the same shape principals/admin.ts uses — so the transitions are
  * unit-tested with a fake host and no editor.
  *
@@ -31,21 +32,37 @@ import {
  */
 
 /** What the panel needs from its surroundings. Injectable for tests. */
-export interface FunctionPanelHost {
+export interface ResourcePanelHost {
   /** `GET /v1/kinds/Function/<name>` — the live manifest. */
   fetchManifest(name: string): Promise<ManifestObject>;
   /** `GET /v1/kinds/Function/<name>/status`, decoded. */
-  fetchStatus(name: string): Promise<FunctionStatus>;
+  fetchStatus(name: string): Promise<ResourceStatus>;
   /** Hands YAML to the existing apply command; resolves when it returns. */
   applyYaml(yaml: string): Promise<void>;
   /** Hands YAML to the existing diff command. */
   diffYaml(yaml: string): Promise<void>;
-  /** `POST /fn/<name>` with a raw body. Never throws for an HTTP error. */
-  invoke(name: string, body: string): Promise<InvocationResult>;
-  /** Modal confirm naming the function and the target; true = proceed. */
+  /**
+   * `POST /fn/<name>` with a raw body. Never throws for an HTTP error.
+   * Present only for Kinds declaring `extras: "function"` (design §2.1)
+   * — absent means the panel renders no invoke affordance.
+   */
+  invoke?(name: string, body: string): Promise<InvocationResult>;
+  /**
+   * Whether `name` already exists on the operator. Used by create to
+   * refuse a silent overwrite — `/v1/apply` is an upsert, so without
+   * this a new draft would replace a live resource (FR-7).
+   */
+  resourceExists?(name: string): Promise<boolean>;
+  /**
+   * Ask what to do when the operator's copy moved under us (409).
+   * "reload" discards local edits, "overwrite" reapplies over theirs,
+   * undefined cancels. Never resolved silently (FR-6).
+   */
+  confirmConflict?(name: string): Promise<"reload" | "overwrite" | undefined>;
+  /** Type-to-confirm naming Kind, name and target; true = proceed. */
   confirmDelete(name: string): Promise<boolean>;
-  /** `DELETE /v1/kinds/Function/<name>`. */
-  deleteFunction(name: string): Promise<void>;
+  /** `DELETE /v1/kinds/<Kind>/<name>`. */
+  deleteResource(name: string): Promise<void>;
   /** Post a message into the webview. */
   post(message: HostMessage): void;
   /** Close the panel (after a delete). */
@@ -53,14 +70,62 @@ export interface FunctionPanelHost {
   profile: { label: string; fqdn: string };
 }
 
-export interface FunctionPanelOptions {
-  /** The function this panel edits, or undefined for a new draft. */
+export interface ResourcePanelOptions {
+  /** The Kind this panel edits — drives schema, routes and copy. */
+  kind: string;
+  /** The resource this panel edits, or undefined for a new draft. */
   name?: string;
-  schema: Record<string, unknown>;
+  /**
+   * The Kind's JSON Schema, or undefined when the operator has not
+   * published one. Undefined selects the raw-YAML fallback, which is the
+   * floor rather than a degraded mode (design §2.2).
+   */
+  schema?: Record<string, unknown>;
   registry: SchemaRegistry;
 }
 
-/** Name of the function a manifest declares, or "" when unnamed. */
+/** `metadata.resourceVersion`, when the operator reported one. */
+export function readResourceVersion(
+  manifest: ManifestObject,
+): string | undefined {
+  const metadata = manifest.metadata;
+  if (typeof metadata === "object" && metadata !== null) {
+    const v = (metadata as Record<string, unknown>).resourceVersion;
+    if (typeof v === "string" && v.length > 0) {
+      return v;
+    }
+    if (typeof v === "number") {
+      return String(v);
+    }
+  }
+  return undefined;
+}
+
+/** A manifest with any resourceVersion removed — an unconditional write. */
+export function stripVersion(manifest: ManifestObject): ManifestObject {
+  const metadata = manifest.metadata;
+  if (typeof metadata !== "object" || metadata === null) {
+    return manifest;
+  }
+  const copy = { ...(metadata as Record<string, unknown>) };
+  delete copy.resourceVersion;
+  return { ...manifest, metadata: copy };
+}
+
+/**
+ * Whether an apply failure is the operator refusing a stale write.
+ * Matched on the status the framework documents (409), not on message
+ * text, which is not a contract.
+ */
+export function isConflict(err: unknown): boolean {
+  const status = (err as { httpStatus?: unknown } | null)?.httpStatus;
+  if (status === 409) {
+    return true;
+  }
+  return err instanceof Error && /\b409\b|conflict/i.test(err.message);
+}
+
+/** Name a manifest declares, or "" when unnamed. */
 export function manifestName(manifest: ManifestObject): string {
   const metadata = manifest.metadata;
   if (typeof metadata === "object" && metadata !== null) {
@@ -84,19 +149,21 @@ export function disabledCopy(manifest: ManifestObject): ManifestObject {
   return { ...manifest, spec: { ...spec, enabled: false } };
 }
 
-export class FunctionPanelController {
+export class ResourcePanelController {
   /** The name this panel is bound to: fixed for an existing resource. */
   private boundName: string | undefined;
+  /** `metadata.resourceVersion` from the last successful read. */
+  private boundVersion: string | undefined;
   private busy = false;
 
   constructor(
-    private readonly host: FunctionPanelHost,
-    private readonly opts: FunctionPanelOptions,
+    private readonly host: ResourcePanelHost,
+    private readonly opts: ResourcePanelOptions,
   ) {
     this.boundName = opts.name;
   }
 
-  /** The function this panel currently addresses (undefined = new). */
+  /** The resource this panel currently addresses (undefined = new). */
   get name(): string | undefined {
     return this.boundName;
   }
@@ -158,33 +225,49 @@ export class FunctionPanelController {
   }
 
   validate(manifest: ManifestObject): PanelDiagnostic[] {
+    const kind = this.opts.kind;
     const name = manifestName(manifest);
-    if (manifest.kind !== "Function") {
-      return [{ path: "/kind", message: 'kind must be "Function"' }];
+    if (manifest.kind !== kind) {
+      return [{ path: "/kind", message: `kind must be "${kind}"` }];
     }
-    const result = this.opts.registry.validateEnvelope({
-      apiVersion: String(manifest.apiVersion ?? ""),
-      kind: "Function",
-      metadata: { name },
-      spec: manifest.spec,
-    });
-    const diagnostics = result.issues.map((i) => ({
-      path: i.path,
-      message: i.message,
-    }));
+    // No published schema means no schema validation. Saying a manifest
+    // is valid when nothing checked it would be the panel lying; the
+    // operator is the first thing that will reject a mistake instead.
+    const diagnostics: PanelDiagnostic[] = this.opts.schema
+      ? this.opts.registry
+          .validateEnvelope({
+            apiVersion: String(manifest.apiVersion ?? ""),
+            kind,
+            metadata: { name },
+            spec: manifest.spec,
+          })
+          .issues.map((i) => ({ path: i.path, message: i.message }))
+      : [];
     if (name.length === 0) {
       diagnostics.unshift({
         path: "/metadata/name",
-        message: "a function needs a name — it is served at /fn/<name>",
+        message:
+          kind === "Function"
+            ? "a function needs a name — it is served at /fn/<name>"
+            : `a ${kind} needs a name — it is addressed by it`,
       });
     }
     return diagnostics;
+  }
+
+  /** A blank manifest for this Kind, used for new drafts and read failures. */
+  private emptyDraft(): ManifestObject {
+    return emptyManifest(
+      this.opts.kind,
+      capabilitiesFor(this.opts.kind).apiVersion,
+    );
   }
 
   async load(): Promise<void> {
     this.host.post({ type: "busy", what: "loading" });
     const base = {
       type: "state" as const,
+      kind: this.opts.kind,
       schema: this.opts.schema,
       profile: this.host.profile,
     };
@@ -192,7 +275,7 @@ export class FunctionPanelController {
       this.host.post({
         ...base,
         mode: "new",
-        manifest: emptyFunctionManifest(),
+        manifest: this.emptyDraft(),
       });
       return;
     }
@@ -202,24 +285,32 @@ export class FunctionPanelController {
     } catch (err) {
       // A resource that cannot be read still gets a form — one that says
       // so, drafted from the name, rather than a blank panel.
-      const draft = emptyFunctionManifest();
+      const draft = this.emptyDraft();
       draft.metadata = { name: this.boundName };
       this.host.post({
         ...base,
         mode: "existing",
         manifest: draft,
-        loadError: `Could not read Function/${this.boundName} from ${this.host.profile.fqdn} — ${describe(err)}`,
+        loadError: `Could not read ${this.opts.kind}/${this.boundName} from ${this.host.profile.fqdn} — ${describe(err)}`,
       });
       return;
     }
-    let status: FunctionStatus | undefined;
+    let status: ResourceStatus | undefined;
     let loadError: string | undefined;
     try {
       status = await this.host.fetchStatus(this.boundName);
     } catch (err) {
-      loadError = `Status for Function/${this.boundName} is unavailable — ${describe(err)}`;
+      loadError = `Status for ${this.opts.kind}/${this.boundName} is unavailable — ${describe(err)}`;
     }
-    this.host.post({ ...base, mode: "existing", manifest, status, loadError });
+    this.boundVersion = readResourceVersion(manifest);
+    this.host.post({
+      ...base,
+      mode: "existing",
+      manifest,
+      status,
+      resourceVersion: this.boundVersion,
+      loadError,
+    });
   }
 
   private async apply(manifest: ManifestObject): Promise<void> {
@@ -229,8 +320,7 @@ export class FunctionPanelController {
       this.host.post({
         type: "notice",
         level: "error",
-        message:
-          "Airdress: the function fails schema validation — fix the marked fields first.",
+        message: `Airdress: this ${this.opts.kind} fails schema validation — fix the marked fields first.`,
       });
       return;
     }
@@ -241,17 +331,76 @@ export class FunctionPanelController {
       this.host.post({
         type: "notice",
         level: "error",
-        message: `Airdress: this panel edits Function/${this.boundName}; a different name would create a new function. Use "New Function" for that.`,
+        message: `Airdress: this panel edits ${this.opts.kind}/${this.boundName}; a different name would create a second resource. Use "New Resource…" for that.`,
       });
       return;
     }
+    // CREATE: /v1/apply is an upsert, so a draft whose name is already
+    // taken would replace a live resource without saying so. Ask first.
+    if (!this.boundName && this.host.resourceExists) {
+      let exists: boolean;
+      try {
+        exists = await this.host.resourceExists(name);
+      } catch {
+        // Cannot tell — do not invent a verdict either way; let the
+        // apply flow's own confirm carry it.
+        exists = false;
+      }
+      if (exists) {
+        this.host.post({
+          type: "notice",
+          level: "error",
+          message: `Airdress: ${this.opts.kind}/${name} already exists on ${this.host.profile.fqdn}. Open it and edit, or choose another name.`,
+        });
+        return;
+      }
+    }
+
     this.host.post({ type: "busy", what: "applying" });
-    await this.host.applyYaml(manifestToYaml(manifest));
+    try {
+      await this.host.applyYaml(manifestToYaml(this.withVersion(manifest)));
+    } catch (err) {
+      if (isConflict(err) && this.boundName && this.host.confirmConflict) {
+        const choice = await this.host.confirmConflict(this.boundName);
+        if (choice === "reload") {
+          await this.load();
+          return;
+        }
+        if (choice === "overwrite") {
+          // Drop the version so the upsert is unconditional — the user
+          // chose this after being shown that someone else had changed it.
+          this.boundVersion = undefined;
+          await this.host.applyYaml(manifestToYaml(stripVersion(manifest)));
+        } else {
+          this.host.post({
+            type: "notice",
+            level: "info",
+            message: "Airdress: apply cancelled; nothing was written.",
+          });
+          return;
+        }
+      } else {
+        throw err;
+      }
+    }
     // The apply flow confirms and reports by itself; whatever it did,
     // the panel is now bound to the name and shows what the operator
     // holds after the fact.
     this.boundName = name;
     await this.load();
+  }
+
+  /** The manifest with the last-read resourceVersion stamped on it. */
+  private withVersion(manifest: ManifestObject): ManifestObject {
+    if (!this.boundVersion) {
+      return manifest;
+    }
+    const metadata =
+      typeof manifest.metadata === "object" && manifest.metadata !== null
+        ? { ...(manifest.metadata as Record<string, unknown>) }
+        : {};
+    metadata.resourceVersion = this.boundVersion;
+    return { ...manifest, metadata };
   }
 
   private async diff(manifest: ManifestObject): Promise<void> {
@@ -264,12 +413,23 @@ export class FunctionPanelController {
       this.host.post({
         type: "notice",
         level: "error",
-        message: "Airdress: apply the function before invoking it.",
+        message: `Airdress: apply the ${this.opts.kind.toLowerCase()} before invoking it.`,
+      });
+      return;
+    }
+    const invoke = this.host.invoke;
+    if (!invoke) {
+      // A Kind without the Function extras has no invoke route at all;
+      // say so rather than failing as though the call went out.
+      this.host.post({
+        type: "notice",
+        level: "info",
+        message: `Airdress: ${this.opts.kind} resources cannot be invoked.`,
       });
       return;
     }
     this.host.post({ type: "busy", what: "invoking" });
-    const result = await this.host.invoke(this.boundName, body);
+    const result = await invoke.call(this.host, this.boundName, body);
     this.host.post({ type: "invocation", result });
   }
 
@@ -288,7 +448,7 @@ export class FunctionPanelController {
     }
     this.host.post({ type: "busy", what: "deleting" });
     try {
-      await this.host.deleteFunction(this.boundName);
+      await this.host.deleteResource(this.boundName);
     } catch (err) {
       this.host.post({
         type: "notice",

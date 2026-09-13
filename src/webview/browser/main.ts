@@ -1,7 +1,7 @@
 import { deriveSpecFields, readAt, writeAt, type FormField } from "../form";
 import {
   functionRoute,
-  type FunctionStatus,
+  type ResourceStatus,
   type HostMessage,
   type InvocationResult,
   type ManifestObject,
@@ -10,7 +10,7 @@ import {
 } from "../protocol";
 
 /**
- * The Function configuration panel — browser side. Plain DOM, no
+ * The resource configuration panel — browser side. Plain DOM, no
  * framework: the form is drawn from the schema fields the extension
  * sends, grouped into the sections a person expects, and every edit
  * updates one manifest object that the buttons post back whole.
@@ -31,11 +31,23 @@ const app = document.getElementById("app") as HTMLElement;
 
 interface View {
   mode: "existing" | "new";
+  /** The Kind this panel edits — every heading and confirm names it. */
+  kind: string;
   manifest: ManifestObject;
-  status?: FunctionStatus;
+  status?: ResourceStatus;
   fields: FormField[];
+  /**
+   * True when no schema was published for this Kind, so `spec` is edited
+   * as raw YAML. The floor, not a degraded mode (FR-2).
+   */
+  yamlMode: boolean;
   profile: { label: string; fqdn: string };
   loadError?: string;
+}
+
+/** Kinds carrying the invoke/bundle affordances (design §2.1). */
+function hasFunctionExtras(kind: string): boolean {
+  return kind === "Function";
 }
 
 let view: View | undefined;
@@ -353,8 +365,10 @@ function overview(v: View): HTMLElement {
         facts.append(el("dt", undefined, k), el("dd", undefined, val));
       }
     };
-    fact("Loaded bundle sha256", status?.bundleSha256);
-    fact("Function id", status?.functionId);
+    if (hasFunctionExtras(v.kind)) {
+      fact("Loaded bundle sha256", status?.bundleSha256);
+      fact("Function id", status?.functionId);
+    }
     fact("Loaded at", status?.loadedAt);
     fact("Last error", status?.lastError);
     section.append(facts);
@@ -394,7 +408,7 @@ function trigger(v: View): HTMLElement {
       el(
         "p",
         "field-help",
-        "Apply the function first; then it can be invoked.",
+        `Apply the ${v.kind.toLowerCase()} first; then it can be invoked.`,
       ),
     );
   }
@@ -416,7 +430,7 @@ function danger(v: View): HTMLElement {
   );
   const remove = el("button", "danger", "Delete…");
   remove.type = "button";
-  remove.title = "Removes the Function from the operator after a confirmation.";
+  remove.title = `Removes the ${v.kind} from the operator after a confirmation.`;
   remove.disabled = v.mode === "new";
   remove.addEventListener("click", () => post({ type: "delete" }));
   row.append(disable, remove);
@@ -445,6 +459,69 @@ function actions(v: View): HTMLElement {
   return bar;
 }
 
+/**
+ * Minimal YAML for the spec editor.
+ *
+ * The webview is deliberately dependency-free plain DOM, so it does not
+ * pull in the `yaml` package for one textarea. `spec` is a JSON value,
+ * and YAML is a JSON superset, so round-tripping through JSON with
+ * two-space indentation is honest and reversible. A Kind whose spec
+ * needs anchors or multi-line scalars is a Kind that should publish a
+ * schema and get a real form.
+ */
+function specToYaml(spec: unknown): string {
+  if (spec === undefined || spec === null) {
+    return "";
+  }
+  return JSON.stringify(spec, null, 2);
+}
+
+/** Parse the editor's text, or undefined when it is not valid. */
+function yamlToSpec(text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed === "") {
+    return {};
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Raw-YAML editor for `spec`, used when the operator has published no
+ * schema for this Kind. Edits land on the same manifest object the
+ * buttons post, so apply/diff/delete are identical to form mode; only
+ * the editing affordance differs (design §2.2).
+ */
+function specYaml(v: View): HTMLElement {
+  const section = el("section", "section section-spec");
+  section.append(el("h2", undefined, "Spec"));
+  section.append(
+    el(
+      "p",
+      "field-help",
+      `No published schema for ${v.kind} — edit spec as YAML. ` +
+        "Validation is disabled, so the operator is the first thing that " +
+        "will reject a mistake.",
+    ),
+  );
+  const box = el("textarea", "spec-yaml");
+  box.rows = 16;
+  box.spellcheck = false;
+  box.value = specToYaml(v.manifest.spec);
+  box.addEventListener("input", () => {
+    const parsed = yamlToSpec(box.value);
+    box.classList.toggle("field-invalid", parsed === undefined);
+    if (parsed !== undefined) {
+      v.manifest.spec = parsed;
+    }
+  });
+  section.append(box);
+  return section;
+}
+
 function render(): void {
   if (!view) {
     return;
@@ -457,7 +534,7 @@ function render(): void {
     el(
       "h1",
       undefined,
-      v.mode === "new" ? "New Function" : `Function: ${name()}`,
+      v.mode === "new" ? `New ${v.kind}` : `${v.kind}: ${name()}`,
     ),
     el("div", "busy", ""),
   );
@@ -475,10 +552,15 @@ function render(): void {
     return s;
   };
   sections.set("Overview", overview(v));
+  if (v.yamlMode) {
+    sections.set("Spec", specYaml(v));
+  }
   for (const field of v.fields) {
     sectionFor(SECTION_OF[field.group] ?? "Other").append(control(field));
   }
-  sections.set("Trigger", trigger(v));
+  if (hasFunctionExtras(v.kind)) {
+    sections.set("Trigger", trigger(v));
+  }
   sections.set("Danger", danger(v));
   for (const title of SECTION_ORDER) {
     const s = sections.get(title);
@@ -509,7 +591,13 @@ function paintDiagnostics(): void {
     summary.replaceChildren();
     if (diagnostics.length === 0) {
       summary.append(
-        el("p", "diagnostic-ok", "Valid against the bundled schema."),
+        el(
+          "p",
+          "diagnostic-ok",
+          view?.yamlMode
+            ? "No schema published for this kind — not validated here."
+            : "Valid against the bundled schema.",
+        ),
       );
     } else {
       for (const d of diagnostics) {
@@ -553,7 +641,9 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
         mode: message.mode,
         manifest,
         status: message.status,
-        fields: deriveSpecFields(message.schema),
+        kind: message.kind,
+        fields: message.schema ? deriveSpecFields(message.schema) : [],
+        yamlMode: !message.schema,
         profile: message.profile,
         loadError: message.loadError,
       };
