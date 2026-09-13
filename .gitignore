@@ -6,3 +6,6 @@ out/
 
 # Symlink to the central specs repo (the extension's specs live in airdress-specs/airdress-vscode)
 .spec-workflow
+
+# Isolated dev host state: user-data-dir (holds the sign-in), driver io, screenshots
+.dev-host/
