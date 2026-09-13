@@ -38,10 +38,13 @@ import { HealthPoller } from "./health/poller";
 import { StatusCache } from "./health/statusCache";
 import type { TreeNodeData } from "./tree/nodes";
 import { clientFor } from "./manifests/diff";
+import { resolveProfile } from "./profiles/picker";
+import { bundledSchemas } from "./manifests/schemas";
 import {
   newFunctionCommand,
-  openFunctionPanel,
-  type FunctionPanelDeps,
+  newResourceCommand,
+  openResourcePanel,
+  type ResourcePanelDeps,
 } from "./webview/panel";
 import * as YAML from "yaml";
 
@@ -177,7 +180,7 @@ export function activate(context: vscode.ExtensionContext): void {
     return id ? profiles.get(id) : undefined;
   }
 
-  const functionPanelDeps: FunctionPanelDeps = {
+  const resourcePanelDeps: ResourcePanelDeps = {
     manifest: manifestDeps,
     extensionUri: context.extensionUri,
   };
@@ -510,17 +513,111 @@ export function activate(context: vscode.ExtensionContext): void {
         if (node?.type !== "resource" || node.resource.kind !== "Function") {
           return;
         }
-        await openFunctionPanel(
-          functionPanelDeps,
+        await openResourcePanel(
+          resourcePanelDeps,
           node.profile,
+          node.resource.kind,
           node.resource.name,
         );
       },
     ),
 
     vscode.commands.registerCommand("airdress.functions.new", async () => {
-      await newFunctionCommand(functionPanelDeps);
+      await newFunctionCommand(resourcePanelDeps);
     }),
+
+    // Generic CRUD. The tree lists every registered Kind but
+    // could only ever CREATE a Function, never edit one in place, and
+    // never called the DELETE the operator has offered all along.
+    // These three close that, over the unchanged API.
+    vscode.commands.registerCommand("airdress.resources.create", async () => {
+      const profile = await resolveProfile(profiles);
+      if (!profile) {
+        return;
+      }
+      // The operator is the authority on which Kinds it registers; the
+      // bundled schemas are the fallback when it cannot be reached, so
+      // "create" still works offline for the Kinds we ship forms for.
+      let kinds: string[];
+      try {
+        kinds = await fetchers.listKinds(profile);
+      } catch {
+        kinds = bundledSchemas().map((s) => s.kind);
+      }
+      if (kinds.length === 0) {
+        void vscode.window.showWarningMessage(
+          `Airdress: ${profile.label} registers no kinds to create.`,
+        );
+        return;
+      }
+      const kind = await vscode.window.showQuickPick(kinds.sort(), {
+        placeHolder: "Which kind of resource?",
+      });
+      if (!kind) {
+        return;
+      }
+      await newResourceCommand(resourcePanelDeps, kind);
+    }),
+
+    vscode.commands.registerCommand(
+      "airdress.resources.edit",
+      async (node: TreeNodeData) => {
+        if (node?.type !== "resource") {
+          return;
+        }
+        await openResourcePanel(
+          resourcePanelDeps,
+          node.profile,
+          node.resource.kind,
+          node.resource.name,
+        );
+      },
+    ),
+
+    // Type-to-confirm, naming Kind, name, profile and FQDN. A row is one
+    // click from a reconciled resource disappearing, so the confirm asks
+    // for the name rather than a yes (FR-4, NFR-6).
+    vscode.commands.registerCommand(
+      "airdress.resources.delete",
+      async (node: TreeNodeData) => {
+        if (node?.type !== "resource") {
+          return;
+        }
+        const { kind, name } = node.resource;
+        const typed = await vscode.window.showInputBox({
+          title: `Delete ${kind}/${name}?`,
+          prompt:
+            `This removes ${kind}/${name} from ${node.profile.label} ` +
+            `(${node.profile.fqdn}). Files the resource named on the ` +
+            `operator's disk are not removed. Type the name to confirm.`,
+          placeHolder: name,
+          ignoreFocusOut: true,
+          validateInput: (v) =>
+            v === name
+              ? undefined
+              : `Type "${name}" exactly, or Escape to cancel.`,
+        });
+        if (typed !== name) {
+          return;
+        }
+        try {
+          await clientFor(manifestDeps, node.profile).send(
+            `/v1/kinds/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`,
+            { method: "DELETE" },
+          );
+          void vscode.window.showInformationMessage(
+            `Airdress: deleted ${kind}/${name} from ${node.profile.label}.`,
+          );
+          resourcesTree.refresh();
+        } catch (err) {
+          void vscode.window.showErrorMessage(
+            `Airdress: could not delete ${kind}/${name} — ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      },
+    ),
 
     // Break-glass has an EXIT, one click away — and no mint action:
     // owner-token minting requires being on the operator's host.

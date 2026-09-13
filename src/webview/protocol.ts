@@ -13,18 +13,22 @@
 /** A manifest as the panel holds it: a plain object, never text. */
 export type ManifestObject = Record<string, unknown>;
 
-/** One condition as the operator reports it for a Function. */
-export interface FunctionCondition {
+/**
+ * One condition as the operator reports it. The operator's declarative
+ * framework gives every Kind the same condition shape, so this is not
+ * Function-specific.
+ */
+export interface ResourceCondition {
   type: string;
   status: "True" | "False" | "Unknown";
   reason?: string;
   message?: string;
 }
 
-/** `GET /v1/kinds/Function/<name>/status`, defensively decoded. */
-export interface FunctionStatus {
+/** `GET /v1/kinds/<Kind>/<name>/status`, defensively decoded. */
+export interface ResourceStatus {
   phase: "Healthy" | "Failed" | "Pending" | "Unknown";
-  conditions: FunctionCondition[];
+  conditions: ResourceCondition[];
   bundleSha256?: string;
   functionId?: string;
   route?: string;
@@ -63,10 +67,23 @@ export type HostMessage =
       type: "state";
       /** Whether this panel edits a live resource or drafts a new one. */
       mode: "existing" | "new";
+      /** The Kind being edited — drives headings and copy in the webview. */
+      kind: string;
       manifest: ManifestObject;
-      status?: FunctionStatus;
-      schema: Record<string, unknown>;
+      status?: ResourceStatus;
+      /**
+       * The Kind's schema, or undefined when the operator has published
+       * none. Undefined selects the raw-YAML editor: the floor, not a
+       * degraded mode (FR-2).
+       */
+      schema?: Record<string, unknown>;
       profile: { label: string; fqdn: string };
+      /**
+       * `metadata.resourceVersion` as the operator last reported it.
+       * Sent back on apply so a stale write is refused with 409 rather
+       * than silently overwriting someone else's change (FR-6).
+       */
+      resourceVersion?: string;
       /** A load failure, worded for a person; the form still renders. */
       loadError?: string;
     }
@@ -134,14 +151,14 @@ export function functionRoute(name: string): string {
  * state is "Unknown", never "Healthy"; conditions missing a type are
  * dropped rather than invented.
  */
-export function parseFunctionStatus(raw: unknown): FunctionStatus {
+export function parseResourceStatus(raw: unknown): ResourceStatus {
   const r = isRecord(raw) ? raw : {};
   const phaseWord = typeof r.phase === "string" ? r.phase : undefined;
-  const phase: FunctionStatus["phase"] =
+  const phase: ResourceStatus["phase"] =
     phaseWord === "Healthy" || phaseWord === "Failed" || phaseWord === "Pending"
       ? phaseWord
       : "Unknown";
-  const conditions: FunctionCondition[] = (
+  const conditions: ResourceCondition[] = (
     Array.isArray(r.conditions) ? r.conditions : []
   ).flatMap((c: unknown) => {
     if (!isRecord(c) || typeof c.type !== "string") {
@@ -184,16 +201,26 @@ export function parseFunctionStatus(raw: unknown): FunctionStatus {
   };
 }
 
-/** An empty Function manifest for the "new function" panel. */
-export function emptyFunctionManifest(): ManifestObject {
+/**
+ * An empty manifest for a "new <Kind>" panel.
+ *
+ * `spec` starts empty for every Kind: the form is derived from the Kind's
+ * schema, which supplies defaults and required fields, so seeding anything
+ * here would be this file guessing on the schema's behalf. `Function` is
+ * the one exception, and only because its own schema has not published
+ * yet (see `schemas/index.ts`) — the seed goes when the schema lands.
+ */
+export function emptyManifest(
+  kind: string,
+  apiVersion: string,
+): ManifestObject {
   return {
-    apiVersion: "airdress.co/v1alpha1",
-    kind: "Function",
+    apiVersion,
+    kind,
     metadata: { name: "" },
-    spec: {
-      bundle: { path: "" },
-      runtime: "wasm-component/v1",
-      enabled: true,
-    },
+    spec:
+      kind === "Function"
+        ? { bundle: { path: "" }, runtime: "wasm-component/v1", enabled: true }
+        : {},
   };
 }

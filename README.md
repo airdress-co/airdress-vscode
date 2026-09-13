@@ -16,12 +16,21 @@ with schema validation and see the diff against what is actually running
   it runs. Saving a file never applies anything.
 - **See what is running.** A read-only resource tree: pools, resources,
   status — administrative metadata only, by design.
-- **Functions, configured.** A panel for each hosted function — bundle,
-  permissions, limits, the `POST /fn/<name>` trigger with a test
-  invoke, disable and delete. The form is drawn from the operator's own
-  manifest schema, and Apply goes through the same confirm-then-apply
-  flow as a file. Open it from a Function row's gear, or draft one with
-  "Airdress: New Function…".
+- **Every resource, editable.** Create, edit and delete any Kind the
+  operator serves — `InferencePoolMember`, `Schedule`, `Function` — from
+  the tree, with no manifest file involved. The panel draws its form
+  from the operator's published schema for that Kind and falls back to
+  a raw-YAML editor when there is none, so a Kind the extension has
+  never heard of is still reachable. One write path (`/v1/apply`), a
+  create that refuses to overwrite an existing name silently, a
+  `resourceVersion` round-trip so a stale edit is reloaded rather than
+  clobbering someone else's, and a type-the-name confirm before any
+  delete. "Airdress: New Resource…" on the Resources view; the pencil
+  and the context menu on every row.
+- **Functions, configured.** The same panel, with what only a Function
+  has: the `POST /fn/<name>` trigger with a test invoke, and the bundle
+  on the operator's disk. Open it from a Function row's gear, or draft
+  one with "Airdress: New Function…".
 
 Works in VS Code and, via Open VSX, in VSCodium and other open builds.
 
@@ -56,15 +65,17 @@ F5, or isolated from your daily profile via the command line — see
 - `src/api/` — fetch wrapper + RFC 7807 parsing; `generated/` is checked in.
 - `src/manifests/` — schemas, Ajv diagnostics, live-diff flow.
 - `src/tree/` — resources tree provider.
-- `src/webview/` — the Function configuration panel: `protocol.ts` and
-  `form.ts` are shared by both bundles; `controller.ts` is the state
+- `src/webview/` — the resource panel, one for every Kind: `protocol.ts`
+  and `form.ts` are shared by both bundles; `controller.ts` is the state
   machine behind a host seam; `panel.ts` is the extension side;
   `browser/main.ts` is the webview side (`dist/webview.js`, its own
-  DOM tsconfig). Layout lives in `media/function-panel.css` only.
+  DOM tsconfig); `kinds.ts` is the closed table of per-Kind extras
+  (today: `Function`). Layout lives in `media/function-panel.css` only.
 - `schemas/fleet-manifest.schema.json` — fleet VM TOML manifest, validate-only.
-- `schemas/function.schema.json` — hand-seeded from the operator's
-  contract until the operator publishes the kind; `npm run sync:schemas`
-  then replaces it (see the note in `scripts/sync-schemas.mjs`).
+- `schemas/<kind>.schema.json` + `src/manifests/schemas/<kind>.json` —
+  byte-identical twins of the operator's published per-Kind schemas,
+  written only by `npm run sync:schemas`. Adding a Kind is described in
+  [CONTRIBUTING.md](https://github.com/airdress-co/airdress-vscode/blob/main/CONTRIBUTING.md).
 
 ## License
 

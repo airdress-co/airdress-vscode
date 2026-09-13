@@ -265,5 +265,5 @@
   ],
   "title": "Airdress operator Function manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.62"
+  "x-airdress-operator-version": "v0.1.64"
 }

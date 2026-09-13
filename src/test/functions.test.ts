@@ -6,24 +6,25 @@ import * as YAML from "yaml";
 import { bundledSchemas } from "../manifests/schemas";
 import { SchemaRegistry } from "../manifests/validate";
 import {
-  FunctionPanelController,
+  ResourcePanelController,
   disabledCopy,
   manifestToYaml,
-  type FunctionPanelHost,
+  type ResourcePanelHost,
 } from "../webview/controller";
 import { deriveSpecFields, labelFor, readAt, writeAt } from "../webview/form";
 import {
-  FUNCTION_PANEL_VIEW_TYPE,
+  RESOURCE_PANEL_VIEW_TYPE,
   cspNonce,
-  openFunctionPanel,
+  openResourcePanel,
   panelHtml,
 } from "../webview/panel";
 import {
-  emptyFunctionManifest,
+  emptyManifest,
   functionRoute,
-  parseFunctionStatus,
+  parseResourceStatus,
   parsePanelMessage,
-  type FunctionStatus,
+  type ResourceCondition,
+  type ResourceStatus,
   type HostMessage,
   type ManifestObject,
 } from "../webview/protocol";
@@ -59,7 +60,7 @@ function validManifest(name = "relay-to-op2"): ManifestObject {
   };
 }
 
-const HEALTHY: FunctionStatus = {
+const HEALTHY: ResourceStatus = {
   phase: "Healthy",
   conditions: [
     { type: "Loaded", status: "True" },
@@ -70,12 +71,12 @@ const HEALTHY: FunctionStatus = {
 };
 
 /** A recording fake host; every call is a line in `calls`. */
-class FakeHost implements FunctionPanelHost {
+class FakeHost implements ResourcePanelHost {
   readonly calls: string[] = [];
   readonly posted: HostMessage[] = [];
   readonly profile = { label: PROFILE.label, fqdn: PROFILE.fqdn };
   manifest: ManifestObject = validManifest();
-  status: FunctionStatus = HEALTHY;
+  status: ResourceStatus = HEALTHY;
   confirm = true;
   failManifest = false;
   failStatus = false;
@@ -89,7 +90,7 @@ class FakeHost implements FunctionPanelHost {
     }
     return structuredClone(this.manifest);
   }
-  async fetchStatus(name: string): Promise<FunctionStatus> {
+  async fetchStatus(name: string): Promise<ResourceStatus> {
     this.calls.push(`fetchStatus ${name}`);
     if (this.failStatus) {
       throw new Error("status route missing");
@@ -116,8 +117,8 @@ class FakeHost implements FunctionPanelHost {
     this.calls.push(`confirmDelete ${name}`);
     return this.confirm;
   }
-  async deleteFunction(name: string): Promise<void> {
-    this.calls.push(`deleteFunction ${name}`);
+  async deleteResource(name: string): Promise<void> {
+    this.calls.push(`deleteResource ${name}`);
     if (this.failDelete) {
       throw new Error("HTTP 409");
     }
@@ -146,8 +147,9 @@ class FakeHost implements FunctionPanelHost {
   }
 }
 
-function controller(host: FakeHost, name?: string): FunctionPanelController {
-  return new FunctionPanelController(host, {
+function controller(host: FakeHost, name?: string): ResourcePanelController {
+  return new ResourcePanelController(host, {
+    kind: "Function",
     name,
     schema: functionSchema(),
     registry: new SchemaRegistry(bundledSchemas()),
@@ -168,7 +170,7 @@ suite("Function panel: state machine (fake host)", () => {
     assert.strictEqual(state.status?.phase, "Healthy");
     assert.strictEqual(state.loadError, undefined);
     assert.strictEqual(state.profile.fqdn, PROFILE.fqdn);
-    assert.ok(state.schema.properties, "the schema rides along for the form");
+    assert.ok(state.schema?.properties, "the schema rides along for the form");
   });
 
   test("load on a draft posts an empty Function and touches no network", async () => {
@@ -177,7 +179,10 @@ suite("Function panel: state machine (fake host)", () => {
     assert.deepStrictEqual(host.calls, []);
     const [state] = host.states();
     assert.strictEqual(state.mode, "new");
-    assert.deepStrictEqual(state.manifest, emptyFunctionManifest());
+    assert.deepStrictEqual(
+      state.manifest,
+      emptyManifest("Function", "airdress.co/v1alpha1"),
+    );
     assert.strictEqual(state.status, undefined);
   });
 
@@ -325,7 +330,7 @@ suite("Function panel: state machine (fake host)", () => {
     await controller(host, "relay-to-op2").handle({ type: "delete" });
     assert.deepStrictEqual(host.calls, [
       "confirmDelete relay-to-op2",
-      "deleteFunction relay-to-op2",
+      "deleteResource relay-to-op2",
     ]);
     assert.ok(
       host.notices().some((n) => n.includes(functionRoute("relay-to-op2"))),
@@ -422,12 +427,12 @@ suite("Function panel: message shapes", () => {
   });
 
   test("status decoding never invents health", () => {
-    assert.strictEqual(parseFunctionStatus(undefined).phase, "Unknown");
+    assert.strictEqual(parseResourceStatus(undefined).phase, "Unknown");
     assert.strictEqual(
-      parseFunctionStatus({ phase: "healthy" }).phase,
+      parseResourceStatus({ phase: "healthy" }).phase,
       "Unknown",
     );
-    const decoded = parseFunctionStatus({
+    const decoded = parseResourceStatus({
       phase: "Failed",
       conditions: [
         { type: "Loaded", status: "False", reason: "DigestMismatch" },
@@ -440,7 +445,7 @@ suite("Function panel: message shapes", () => {
     });
     assert.strictEqual(decoded.phase, "Failed");
     assert.deepStrictEqual(
-      decoded.conditions.map((c) => `${c.type}=${c.status}`),
+      decoded.conditions.map((c: ResourceCondition) => `${c.type}=${c.status}`),
       ["Loaded=False", "Ready=True", "Odd=Unknown"],
     );
     assert.strictEqual(decoded.conditions[0].reason, "DigestMismatch");
@@ -681,7 +686,7 @@ suite("Function panel: contributions and shell", () => {
   test("the shell carries a strict CSP with a nonce'd script and no inline allowances", () => {
     const { root } = pkg();
     const panel = vscode.window.createWebviewPanel(
-      FUNCTION_PANEL_VIEW_TYPE,
+      RESOURCE_PANEL_VIEW_TYPE,
       "csp test",
       vscode.ViewColumn.Active,
       { enableScripts: true },
@@ -726,13 +731,23 @@ suite("Function panel: contributions and shell", () => {
       extensionUri: vscode.Uri.file(root),
       hostFor: () => host,
     };
-    const first = await openFunctionPanel(deps, PROFILE, "relay-to-op2");
-    const again = await openFunctionPanel(deps, PROFILE, "relay-to-op2");
-    const draft = await openFunctionPanel(deps, PROFILE, undefined);
+    const first = await openResourcePanel(
+      deps,
+      PROFILE,
+      "Function",
+      "relay-to-op2",
+    );
+    const again = await openResourcePanel(
+      deps,
+      PROFILE,
+      "Function",
+      "relay-to-op2",
+    );
+    const draft = await openResourcePanel(deps, PROFILE, "Function", undefined);
     try {
       assert.strictEqual(first, again);
       assert.notStrictEqual(first, draft);
-      assert.strictEqual(first.viewType, FUNCTION_PANEL_VIEW_TYPE);
+      assert.strictEqual(first.viewType, RESOURCE_PANEL_VIEW_TYPE);
       assert.strictEqual(first.title, "Function: relay-to-op2");
       assert.strictEqual(draft.title, "New Function");
     } finally {
@@ -740,7 +755,12 @@ suite("Function panel: contributions and shell", () => {
       draft.dispose();
     }
     // Disposed panels are forgotten: the next open is a fresh one.
-    const fresh = await openFunctionPanel(deps, PROFILE, "relay-to-op2");
+    const fresh = await openResourcePanel(
+      deps,
+      PROFILE,
+      "Function",
+      "relay-to-op2",
+    );
     assert.notStrictEqual(fresh, first);
     fresh.dispose();
   });
