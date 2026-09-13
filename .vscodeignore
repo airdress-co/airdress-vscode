@@ -14,3 +14,10 @@ tsconfig.test.json
 .gitignore
 **/*.map
 **/*.vsix
+
+# Dev-host state (holds a sign-in) and the dev-host toolkit: never in the VSIX
+.dev-host/**
+tools/**
+# Symlink to the private specs repo — a directory vsce reads as a file (EISDIR)
+.spec-workflow
+.spec-workflow/**
