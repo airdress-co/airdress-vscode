@@ -16,6 +16,13 @@ with schema validation and see the diff against what is actually running
   it runs. Saving a file never applies anything.
 - **See what is running.** A read-only resource tree: pools, resources,
   status — administrative metadata only, by design.
+- **One airdress at a time, in view.** The _Airdress_ view at the top of
+  the sidebar says which operator is current, whether it answers, and
+  whether you are signed in — as facts, not guesses: a dead session
+  shows **needs sign-in** before you run anything, and _Sign in again_
+  refreshes that profile in place. Every command acts on the current
+  airdress without asking; switching is one click, and every write
+  still names its target profile and FQDN in its confirm.
 - **Every resource, editable.** Create, edit and delete any Kind the
   operator serves — `InferencePoolMember`, `Schedule`, `Function` — from
   the tree, with no manifest file involved. The panel draws its form
@@ -65,6 +72,9 @@ F5, or isolated from your daily profile via the command line — see
 - `src/api/` — fetch wrapper + RFC 7807 parsing; `generated/` is checked in.
 - `src/manifests/` — schemas, Ajv diagnostics, live-diff flow.
 - `src/tree/` — resources tree provider.
+- `src/selector/` — the Airdress view: `protocol.ts` shared by both
+  bundles, `controller.ts` behind a host seam, `view.ts` the
+  WebviewView, `browser/main.ts` → `dist/selector.js`.
 - `src/webview/` — the resource panel, one for every Kind: `protocol.ts`
   and `form.ts` are shared by both bundles; `controller.ts` is the state
   machine behind a host seam; `panel.ts` is the extension side;
