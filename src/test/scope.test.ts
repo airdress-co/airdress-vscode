@@ -140,3 +140,34 @@ suite("validate is distinct from apply", () => {
     );
   });
 });
+
+suite("apply body is JSON whatever the document language", () => {
+  test("a YAML document is re-encoded as JSON for POST /v1/apply; a JSON one is sent as written", () => {
+    const yaml = [
+      "apiVersion: airdress.co/v1alpha1",
+      "kind: InferencePoolMember",
+      "metadata:",
+      "  name: vllm-0",
+      "spec:",
+      "  backend: echo",
+      "  models:",
+      "    - name: llama-3",
+    ].join("\n");
+    const plan = planApplyDocuments(yaml, "yaml");
+    assert.ok("docs" in plan, JSON.stringify(plan));
+    const [doc] = plan.docs;
+    assert.strictEqual(doc.text, yaml, "the text stays as written");
+    // The operator's handler extracts Json<Manifest>; YAML is a 415.
+    assert.deepStrictEqual(JSON.parse(doc.body), {
+      apiVersion: "airdress.co/v1alpha1",
+      kind: "InferencePoolMember",
+      metadata: { name: "vllm-0" },
+      spec: { backend: "echo", models: [{ name: "llama-3" }] },
+    });
+
+    const json = JSON.stringify(JSON.parse(doc.body), null, 2);
+    const jsonPlan = planApplyDocuments(json, "json");
+    assert.ok("docs" in jsonPlan);
+    assert.strictEqual(jsonPlan.docs[0].body, json);
+  });
+});

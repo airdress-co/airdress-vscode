@@ -346,13 +346,12 @@ export async function applyManifest(
   let accepted = false;
   for (const planned of selected) {
     try {
+      // Always JSON — see PlannedDoc.body for why a YAML document is
+      // re-encoded rather than sent as `application/yaml`.
       const response = await clientFor(deps, profile).send("/v1/apply", {
         method: "POST",
-        headers: {
-          "content-type":
-            doc.languageId === "json" ? "application/json" : "application/yaml",
-        },
-        body: planned.text,
+        headers: { "content-type": "application/json" },
+        body: planned.body,
       });
       accepted ||= response.status === 202;
       applied.push(`${planned.kind}/${planned.name}`);

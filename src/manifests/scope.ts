@@ -13,8 +13,17 @@ import { parseManifest } from "./validate";
 export interface PlannedDoc {
   kind: string;
   name: string;
-  /** The exact text to POST for this document. */
+  /** The document's own text, as written (diagnostics, display). */
   text: string;
+  /**
+   * The JSON body to POST. Always JSON, whatever the source language:
+   * the operator's contract advertises `application/yaml` on
+   * `/v1/apply`, but its handler extracts `Json<Manifest>` and answers
+   * 415 to anything else — measured 2026-09-13 against a live operator,
+   * and true since the route existed. A YAML document is therefore
+   * parsed here and re-encoded; the operator sees the same manifest.
+   */
+  body: string;
   /** Character offset of the document in the source file (diagnostics). */
   offset: number;
 }
@@ -45,6 +54,7 @@ export function planApplyDocuments(
           kind: parsed.envelope.kind,
           name: parsed.envelope.metadata.name,
           text,
+          body: text,
           offset: 0,
         },
       ],
@@ -81,6 +91,7 @@ export function planApplyDocuments(
       kind: parsed.envelope.kind,
       name: parsed.envelope.metadata.name,
       text: docText,
+      body: JSON.stringify(document.toJS() as unknown),
       offset: document.range[0],
     });
   }
