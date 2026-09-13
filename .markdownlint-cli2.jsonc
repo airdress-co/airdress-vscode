@@ -1,4 +1,6 @@
 {
+  // CHANGELOG.md is written by release-please in its own style.
+  "ignores": ["CHANGELOG.md"],
   "config": {
     "MD013": false,
     // release-please repeats "### Features" under every release entry.
