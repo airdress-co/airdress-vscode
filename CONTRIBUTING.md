@@ -116,15 +116,26 @@ these are the walls, measured on 2026-09-12:
   `vscode.commands.executeCommand` from outside the window, the shape
   that works is a tiny second dev extension that watches a private
   scratch directory for `cmd-*.json`, executes the command, and writes
-  the reply beside it. It reaches palette commands _and_ quick-pick
-  acceptance (`workbench.action.acceptSelectedQuickOpenItem`) with no
-  input injection, and a command that takes a tree node can be handed
-  one as JSON. The same driver with an HTTP control port is an RCE
-  surface; do not rebuild it that way.
+  the reply beside it, and a command that takes a tree node can be
+  handed one as JSON. The same driver with an HTTP control port is an
+  RCE surface; do not rebuild it that way.
 
-- **What it cannot reach:** the text of an open quick-pick, and the
-  webview's own form. `executeCommand` opens the panel; nothing outside
-  the window types into it.
+- **What `executeCommand` cannot reach:** a quick-pick (measured
+  2026-09-13: `workbench.action.acceptSelectedQuickOpenItem` left the
+  profile pick open), a modal dialog (native on Linux), and the
+  webview's own form. Which is why the extension registers two
+  commands **in `ExtensionMode.Development` only**:
+  `airdress.dev.openPanel(profile, kind, name?)` opens the panel the
+  create/edit commands would open once their picks are answered, and
+  `airdress.dev.drivePanel(profile, kind, name?, message, answers?)`
+  feeds one webview-shaped message — a load, an apply carrying a
+  manifest, a delete — through the panel's own receive path
+  and returns everything the host posted back — the operator's reload
+  after an apply included, so a `state` with a `resourceVersion` is the
+  assertion. `answers` pre-answers the three modal prompts for that one
+  message (`{apply: true}`, `{conflict: "reload"}`, `{delete: true}`);
+  leave one out and the modal shows as it would for a person. A release
+  build never registers either command.
 
 - **The sign-in wall cannot be driven on this OS.** The "open external
   website?" modal and the browser tab behind it are OS-drawn; nothing
