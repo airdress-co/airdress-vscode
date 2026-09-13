@@ -68,25 +68,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # The sync script fetches only version-PINNED artifact URLs, so a
-      # rewrite is deterministic: a diff below means the repo drifted
-      # from the published schemas, never that upstream moved under us.
-      - name: Sync schemas from published pinned artifacts
-        id: sync
-        run: |
-          set +e
-          node scripts/sync-schemas.mjs
-          code=$?
-          set -e
-          if [ "$code" -eq 2 ]; then
-            echo "::notice::schema sync-check SKIPPED - schemas.airdress.co unreachable (network flake, not drift)"
-            echo "skipped=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          exit "$code"
+      # The check fetches only version-PINNED artifact URLs, so a mismatch
+      # means the repo drifted from the published schemas, never that
+      # upstream moved under us. A Kind the operator publishes that this
+      # repo has never bundled is reported as MISSING — a plain
+      # `git diff` would not see it, because the file is untracked.
+      # Unreachable upstream exits 0 with a notice on stderr: a network
+      # flake is not drift. The same check runs as a pre-commit hook.
       - name: Fail on drift from published schemas
-        if: steps.sync.outputs.skipped != 'true'
-        run: git diff --exit-code -- src/manifests/schemas schemas
+        run: node scripts/sync-schemas.mjs --check
 
   prek:
     name: Prek

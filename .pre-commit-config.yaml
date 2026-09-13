@@ -50,3 +50,16 @@ repos:
         language: system
         files: ^src/.*\.ts$
         pass_filenames: true
+
+      - id: schema-sync-check
+        name: bundled schemas match the published pins
+        # Drift arrives from upstream (an operator release publishes a
+        # new pin, or a new Kind), not from a local edit, so this runs
+        # on every commit regardless of what changed. Fetches only the
+        # version-pinned URLs; an unreachable upstream is a loud skip,
+        # never a failure. On drift: `npm run sync:schemas`, register
+        # any new Kind (CONTRIBUTING.md), stage, commit again.
+        entry: node scripts/sync-schemas.mjs --check
+        language: system
+        always_run: true
+        pass_filenames: false
