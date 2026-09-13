@@ -90,6 +90,8 @@ export interface ClientOptions {
   fetchFn?: typeof fetch;
   /** Names the profile in NotAuthenticatedError messages. */
   profileLabel?: string;
+  /** Called on a 401 — the bearer the profile holds is refused. */
+  onUnauthorized?: () => void;
 }
 
 export class ApiClient {
@@ -140,6 +142,9 @@ export class ApiClient {
         body = await response.json();
       } catch {
         body = undefined;
+      }
+      if (response.status === 401) {
+        this.opts.onUnauthorized?.();
       }
       throw new ApiError(parseProblem(body, response.status), response.status);
     }

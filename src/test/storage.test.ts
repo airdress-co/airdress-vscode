@@ -252,6 +252,66 @@ suite("AuthManager (T6-02)", () => {
     );
   });
 
+  test("credential outcomes are reported as facts, never inferred from a stored secret", async () => {
+    const backing = new FakeSecretStorage();
+    const seen: Array<[string, string]> = [];
+    let refreshOk = true;
+    const manager = new AuthManager(new SecretStore(backing), {
+      signInFn: async () => tokenSet({ expiresAt: Date.now() - 1 }),
+      refreshFn: async () => {
+        if (!refreshOk) {
+          throw new Error("invalid_grant");
+        }
+        return tokenSet({ accessToken: "access-2" });
+      },
+      getConfig: () => cfg,
+    });
+    manager.onDidChangeCredential((c) => seen.push([c.profileId, c.outcome]));
+    const target = { id: "p1", authMode: "zitadel" as const };
+    assert.strictEqual(manager.outcomeFor("p1"), "unknown");
+
+    await manager.signInZitadel("p1", undefined as never);
+    assert.strictEqual(manager.outcomeFor("p1"), "ok");
+    // Expired access token, refresh succeeds: still ok (no duplicate event).
+    await manager.getAccessToken(target);
+    assert.deepStrictEqual(seen, [["p1", "ok"]]);
+
+    // The silent refresh fails: no-credential, the moment it happens —
+    // the secret is still in the store, and that is not the point.
+    refreshOk = false;
+    manager.reportUnauthorized("p1"); // drops the cached access token
+    assert.strictEqual(manager.outcomeFor("p1"), "unauthorized");
+    await manager.getAccessToken(target);
+    assert.strictEqual(manager.outcomeFor("p1"), "no-credential");
+    assert.ok(
+      backing.stored.has("airdress.profile.p1.refresh"),
+      "secret still there",
+    );
+
+    // Sign-out reports no-credential too; a bearer profile reports on read.
+    await manager.signOut("p1");
+    await manager.getAccessToken({ id: "b1", authMode: "bearer" });
+    await manager.setBearer("b1", BEARER_SECRET);
+    assert.deepStrictEqual(seen, [
+      ["p1", "ok"],
+      ["p1", "unauthorized"],
+      ["p1", "no-credential"],
+      ["p1", "no-credential"],
+      ["b1", "no-credential"],
+      ["b1", "ok"],
+    ]);
+    // No payload ever carried a token or a fragment of one.
+    const payloads = JSON.stringify(seen);
+    for (const secret of [
+      REFRESH_SECRET,
+      ACCESS_SECRET,
+      BEARER_SECRET,
+      "access-2",
+    ]) {
+      assert.ok(!payloads.includes(secret), `payload leaked ${secret}`);
+    }
+  });
+
   test("expired access token triggers exactly one silent refresh", async () => {
     const backing = new FakeSecretStorage();
     let refreshCalls = 0;

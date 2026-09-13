@@ -370,6 +370,55 @@ export function activate(context: vscode.ExtensionContext): void {
       await pickProfile(profiles);
     }),
 
+    // "Sign in again" for a profile whose credential died — on the SAME
+    // profile id. Until this existed the only sign-in paths minted a
+    // new profile, which is how the tree grew twin rows. ZITADEL goes
+    // through a throwaway candidate id and adopts the result, so a
+    // cancelled browser flow leaves the profile exactly as it was.
+    vscode.commands.registerCommand(
+      "airdress.profiles.signInAgain",
+      async (target?: Profile | TreeNodeData) => {
+        const explicit =
+          target && "type" in target
+            ? target.type === "profile"
+              ? target.profile
+              : undefined
+            : target;
+        const profile = await resolveProfile(profiles, explicit);
+        if (!profile) {
+          return;
+        }
+        try {
+          if (profile.authMode === "zitadel") {
+            const candidate = crypto.randomUUID();
+            try {
+              await auth.signInZitadel(candidate, callbackRouter);
+              await auth.adoptCredential(candidate, profile.id);
+            } catch (err) {
+              await auth.signOut(candidate);
+              throw err;
+            }
+          } else {
+            const bearer = await promptForBearer();
+            if (!bearer) {
+              return;
+            }
+            await auth.setBearer(profile.id, bearer);
+          }
+          void vscode.window.showInformationMessage(
+            `Airdress: signed in again to ${profile.label} (${profile.fqdn}).`,
+          );
+          refreshAllViews();
+        } catch (err) {
+          void vscode.window.showErrorMessage(
+            `Airdress: sign-in for ${profile.label} failed — ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      },
+    ),
+
     // Operators-view click target: make this profile active. Not in
     // the palette — the palette flow is airdress.profiles.pick.
     vscode.commands.registerCommand(

@@ -31,6 +31,7 @@ export function clientFor(deps: ManifestDeps, profile: Profile): ApiClient {
     traceHeader: cfg.get<boolean>("telemetry.traceHeader", false),
     fetchFn: deps.fetchFn,
     profileLabel: profile.label,
+    onUnauthorized: () => deps.auth.reportUnauthorized(profile.id),
   });
 }
 
