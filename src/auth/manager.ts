@@ -145,6 +145,29 @@ export class AuthManager {
     );
   }
 
+  /**
+   * Move a freshly minted credential from a candidate id onto an
+   * existing profile — the "sign in again" for a profile whose refresh
+   * token died. The access token moves in memory, the refresh token in
+   * SecretStorage; nothing stays under `fromId`.
+   */
+  async adoptCredential(fromId: string, toId: string): Promise<void> {
+    const tokens = this.accessTokens.get(fromId);
+    const refreshToken = await this.secrets.getRefreshToken(fromId);
+    if (!tokens && !refreshToken) {
+      throw new Error("no credential to adopt");
+    }
+    this.accessTokens.delete(toId);
+    this.refreshing.delete(toId);
+    if (tokens) {
+      this.accessTokens.set(toId, tokens);
+    }
+    if (refreshToken) {
+      await this.secrets.setRefreshToken(toId, refreshToken);
+    }
+    await this.signOut(fromId);
+  }
+
   /** Sign out: drop the in-memory token and every stored secret. */
   async signOut(profileId: string): Promise<void> {
     this.accessTokens.delete(profileId);

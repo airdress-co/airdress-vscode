@@ -308,6 +308,7 @@ export function activate(context: vscode.ExtensionContext): void {
         getToken: (profileId) =>
           auth.getAccessToken({ id: profileId, authMode: "zitadel" }),
         discard: (profileId) => auth.signOut(profileId),
+        adopt: (fromId, toId) => auth.adoptCredential(fromId, toId),
         hubUrl: () =>
           vscode.workspace
             .getConfiguration("airdress.hub")
