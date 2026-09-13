@@ -190,7 +190,8 @@ export function createStatusBar(store: ProfileStore): {
     50,
   );
   item.name = "Airdress profile";
-  item.command = "airdress.profiles.pick";
+  // Click opens the selector view — the status bar mirrors, it does not lead.
+  item.command = "airdress.selector.focus";
   const refresh = () => {
     const active = store.activeId();
     const profile = active ? store.get(active) : undefined;

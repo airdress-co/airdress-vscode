@@ -8,6 +8,8 @@
   "include": [
     "src/webview/browser",
     "src/webview/protocol.ts",
-    "src/webview/form.ts"
+    "src/webview/form.ts",
+    "src/selector/browser",
+    "src/selector/protocol.ts"
   ]
 }

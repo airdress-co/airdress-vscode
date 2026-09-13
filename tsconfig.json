@@ -16,5 +16,11 @@
     "sourceMap": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "out", "src/webview/browser"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "out",
+    "src/webview/browser",
+    "src/selector/browser"
+  ]
 }

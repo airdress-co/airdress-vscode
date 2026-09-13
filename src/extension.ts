@@ -34,6 +34,7 @@ import {
 } from "./principals/admin";
 import type { Profile } from "./profiles/model";
 import { deleteResourcePrompt } from "./profiles/confirm";
+import { SELECTOR_VIEW_ID, SelectorViewProvider } from "./selector/view";
 import * as crypto from "node:crypto";
 import { HealthPoller } from "./health/poller";
 import { StatusCache } from "./health/statusCache";
@@ -106,6 +107,19 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.workspace
         .getConfiguration("airdress")
         .get<number>("health.intervalSeconds", 60),
+  });
+
+  // The selector: which airdress is current, reachability and credential
+  // state as facts. Its probe is one authenticated read per activation
+  // and per switch, only while visible.
+  const selector = new SelectorViewProvider({
+    profiles,
+    auth,
+    poller,
+    probe: async (profile) => {
+      await fetchers.listKinds(profile);
+    },
+    extensionUri: context.extensionUri,
   });
 
   const operatorsTree = new OperatorsTreeProvider(
@@ -260,12 +274,19 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     statusBar.item,
     breakGlassItem,
+    vscode.window.registerWebviewViewProvider(SELECTOR_VIEW_ID, selector),
+    auth.onDidChangeCredential(() => selector.refresh()),
+    poller.onDidUpdate(() => selector.refresh()),
+    vscode.commands.registerCommand("airdress.selector.refresh", () => {
+      selector.onActiveChanged();
+    }),
     operatorsView,
     resourcesView,
     principalsView,
     poller,
     poller.onDidUpdate(() => operatorsTree.refresh()),
     profiles.onDidChange(() => {
+      selector.onActiveChanged();
       statusBar.refresh();
       refreshAllViews();
       syncPollerProfile();
@@ -723,6 +744,9 @@ export function activate(context: vscode.ExtensionContext): void {
       // The quick-picks in front of a draft (profile, then Kind) are
       // VS Code chrome a script cannot answer; this opens the same
       // panel `airdress.resources.create` opens once they are answered.
+      vscode.commands.registerCommand("airdress.dev.selectorState", () =>
+        selector.state(),
+      ),
       vscode.commands.registerCommand(
         "airdress.dev.openPanel",
         async (profile: Profile, kind: string, name?: string) => {

@@ -1,0 +1,66 @@
+/* The selector view: one airdress, its two facts, and the actions. */
+body {
+  padding: 0 12px 12px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+}
+h2 {
+  margin: 8px 0 2px;
+  font-size: 1.1em;
+  font-weight: 600;
+}
+.fqdn {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+  word-break: break-all;
+}
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 0 0 10px;
+}
+.facts dt {
+  color: var(--vscode-descriptionForeground);
+}
+.facts dd {
+  margin: 0;
+}
+.reach-reachable,
+.credential-signed-in {
+  color: var(--vscode-testing-iconPassed);
+}
+.reach-unreachable,
+.credential-needs-sign-in {
+  color: var(--vscode-errorForeground);
+  font-weight: 600;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+button {
+  padding: 4px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  cursor: pointer;
+}
+button.primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.busy,
+.empty p {
+  color: var(--vscode-descriptionForeground);
+}

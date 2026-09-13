@@ -269,6 +269,7 @@ suite("principals view (owner only)", () => {
     const views = pkg.contributes.views.airdress;
     const ids = views.map((v) => v.id);
     assert.deepStrictEqual(ids, [
+      "airdress.selector",
       "airdress.operators",
       "airdress.resources",
       "airdress.principals",
