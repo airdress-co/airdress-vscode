@@ -4,6 +4,7 @@ import { isLocalhost, validateFqdn } from "../profiles/validate";
 import { pickProfile, resolveProfile, statusBarText } from "../profiles/picker";
 import { DuplicateFqdnError, ProfileStore } from "../profiles/store";
 import type { Profile } from "../profiles/model";
+import { explicitProfile } from "../extension";
 
 /**
  * Table-driven FQDN validation (FR-25). Raw IP literals bypass the
@@ -349,5 +350,25 @@ suite("one row per airdress", () => {
       ["x2", "y1"],
     );
     assert.strictEqual(store.activeId(), "x2");
+  });
+});
+
+suite("explicitProfile: what a command was invoked ON", () => {
+  test("a profile row names its profile; a Profile argument is itself; other nodes name nothing", () => {
+    const p = profile("a", "a.a.airdr.es");
+    assert.strictEqual(explicitProfile(undefined), undefined);
+    assert.strictEqual(explicitProfile(p), p);
+    assert.strictEqual(
+      explicitProfile({ type: "profile", profile: p, active: true }),
+      p,
+    );
+    assert.strictEqual(
+      explicitProfile({
+        type: "resource",
+        profile: p,
+        resource: { kind: "Schedule", name: "x" },
+      } as never),
+      undefined,
+    );
   });
 });

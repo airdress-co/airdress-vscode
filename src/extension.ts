@@ -64,6 +64,23 @@ export const callbackRouter = new CallbackRouter();
  * All operator API traffic is deferred until a user gesture (a command,
  * a tree expansion, a view becoming visible) explicitly asks for it.
  */
+/**
+ * The profile a command was invoked ON, if any: a tree row's profile, or
+ * a Profile passed as an argument (the selector view, a script). Any
+ * other node type names no profile.
+ */
+export function explicitProfile(
+  target: Profile | TreeNodeData | undefined,
+): Profile | undefined {
+  if (!target) {
+    return undefined;
+  }
+  if ("type" in target) {
+    return target.type === "profile" ? target.profile : undefined;
+  }
+  return target;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const profiles = new ProfileStore(context.globalState);
   const auth = new AuthManager(new SecretStore(context.secrets));
@@ -399,13 +416,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "airdress.profiles.signInAgain",
       async (target?: Profile | TreeNodeData) => {
-        const explicit =
-          target && "type" in target
-            ? target.type === "profile"
-              ? target.profile
-              : undefined
-            : target;
-        const profile = await resolveProfile(profiles, explicit);
+        const profile = await resolveProfile(profiles, explicitProfile(target));
         if (!profile) {
           return;
         }
@@ -452,31 +463,40 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
 
-    vscode.commands.registerCommand("airdress.profiles.signOut", async () => {
-      // Explicit profile resolution — no ambient default.
-      const all = profiles.list();
-      if (all.length === 0) {
+    // Sign-out is the one command that still ASKS with no explicit
+    // target: dropping a credential should never ride on whichever
+    // airdress happened to be active. A tree row or an argument names
+    // its target and skips the pick.
+    vscode.commands.registerCommand(
+      "airdress.profiles.signOut",
+      async (target?: Profile | TreeNodeData) => {
+        const all = profiles.list();
+        if (all.length === 0) {
+          void vscode.window.showInformationMessage(
+            "Airdress: there are no profiles to sign out of.",
+          );
+          return;
+        }
+        const explicit = explicitProfile(target);
+        const picked =
+          explicit ??
+          (await vscode.window.showQuickPick(
+            all.map((p) => ({ label: p.label, description: p.fqdn, id: p.id })),
+            { placeHolder: "Sign out of which operator profile?" },
+          ));
+        if (!picked) {
+          return;
+        }
+        await auth.signOut(picked.id);
+        ownership.invalidate(picked.id);
+        void refreshBreakGlass();
         void vscode.window.showInformationMessage(
-          "Airdress: there are no profiles to sign out of.",
+          `Airdress: signed out of ${picked.label}.`,
         );
-        return;
-      }
-      const picked = await vscode.window.showQuickPick(
-        all.map((p) => ({ label: p.label, description: p.fqdn, id: p.id })),
-        { placeHolder: "Sign out of which operator profile?" },
-      );
-      if (!picked) {
-        return;
-      }
-      await auth.signOut(picked.id);
-      ownership.invalidate(picked.id);
-      void refreshBreakGlass();
-      void vscode.window.showInformationMessage(
-        `Airdress: signed out of ${picked.label}.`,
-      );
-      refreshAllViews();
-      void updatePrincipalsContext();
-    }),
+        refreshAllViews();
+        void updatePrincipalsContext();
+      },
+    ),
 
     vscode.commands.registerCommand("airdress.resources.refresh", () => {
       ownership.invalidate();
