@@ -75,7 +75,7 @@ function schemaFor(kind: string): Record<string, unknown> | undefined {
 const open = new Map<string, vscode.WebviewPanel>();
 
 function panelKey(
-  profile: Profile,
+  profile: Pick<Profile, "id">,
   kind: string,
   name: string | undefined,
 ): string {
@@ -126,6 +126,20 @@ export function panelHtml(
 }
 
 /**
+ * Pre-supplied answers to the host's three modal prompts. Undefined —
+ * every user path — shows the modal. Only `drivePanel` sets them, for
+ * the duration of one driven message.
+ */
+export interface DriveAnswers {
+  /** The apply confirm ("Apply" / cancel). */
+  apply?: boolean;
+  /** The 409 prompt; `null` is "cancel". */
+  conflict?: "reload" | "overwrite" | null;
+  /** The delete confirm. */
+  delete?: boolean;
+}
+
+/**
  * The live host: every network call goes through the profile's
  * ApiClient (bearer from SecretStorage, never seen here), and apply /
  * diff go through the existing commands on an untitled document.
@@ -134,6 +148,7 @@ export function liveHost(
   deps: ManifestDeps,
   profile: Profile,
   kind: string,
+  answers: { current?: DriveAnswers } = {},
 ): Omit<ResourcePanelHost, "post" | "close" | "profile"> {
   const client = () => clientFor(deps, profile);
   const resourcePath = (name: string) =>
@@ -159,9 +174,25 @@ export function liveHost(
         await client().request<unknown>(`${resourcePath(name)}/status`),
       );
     },
+    // `applyYaml` resolves only when the operator took the manifest.
+    // `applyManifest` reports to the editor (a message, a diagnostic on
+    // the untitled document) and used to return normally either way —
+    // so the panel reloaded after a refused or cancelled apply and
+    // showed "not found" for a create, and a 409 never reached the
+    // controller's conflict handling at all. Seen on hardware.
     async applyYaml(yaml) {
       await openAsYaml(yaml);
-      await applyManifest(deps, profile);
+      const outcome = await applyManifest(deps, profile, {
+        confirm: answers.current?.apply,
+      });
+      if (outcome.status === "failed") {
+        throw outcome.error;
+      }
+      if (outcome.status === "cancelled") {
+        throw Object.assign(new Error(`apply cancelled — ${outcome.reason}`), {
+          cancelled: true,
+        });
+      }
     },
     async diffYaml(yaml) {
       await openAsYaml(yaml);
@@ -218,6 +249,9 @@ export function liveHost(
       }
     },
     async confirmConflict(name) {
+      if (answers.current?.conflict !== undefined) {
+        return answers.current.conflict ?? undefined;
+      }
       const choice = await vscode.window.showWarningMessage(
         `${kind}/${name} changed on ${profile.fqdn} since you opened it.`,
         {
@@ -236,6 +270,9 @@ export function liveHost(
           : undefined;
     },
     async confirmDelete(name) {
+      if (answers.current?.delete !== undefined) {
+        return answers.current.delete;
+      }
       const detail = hasFunctionExtras(kind)
         ? `${functionRoute(name)} stops answering immediately. The bundle file on the operator is not removed.`
         : `The reconciled effect of ${kind}/${name} is torn down. Files it named on the operator's disk are not removed.`;
@@ -287,13 +324,22 @@ export async function openResourcePanel(
   panel.webview.html = panelHtml(panel.webview, deps.extensionUri, cspNonce());
   open.set(key, panel);
 
+  const answers: { current?: DriveAnswers } = {};
   const base = (
-    deps.hostFor ?? ((_p, prof, k) => liveHost(deps.manifest, prof, k))
+    deps.hostFor ?? ((_p, prof, k) => liveHost(deps.manifest, prof, k, answers))
   )(panel, profile, kind);
+  const seam: DrivenPanel = {
+    posted: [],
+    answers,
+    handle: async () => undefined,
+  };
   const host: ResourcePanelHost = {
     ...base,
     profile: { label: profile.label, fqdn: profile.fqdn },
-    post: (message: HostMessage) => void panel.webview.postMessage(message),
+    post: (message: HostMessage) => {
+      seam.posted.push(message);
+      void panel.webview.postMessage(message);
+    },
     close: () => panel.dispose(),
   };
   const controller = new ResourcePanelController(host, {
@@ -303,17 +349,20 @@ export async function openResourcePanel(
     registry: schemaRegistry(),
   });
 
-  panel.webview.onDidReceiveMessage((raw: unknown) => {
-    void controller.handle(raw).catch((err) => {
+  const receive = (raw: unknown): Promise<void> =>
+    controller.handle(raw).catch((err) => {
       host.post({
         type: "notice",
         level: "error",
         message: `Airdress: ${err instanceof Error ? err.message : String(err)}`,
       });
     });
-  });
+  seam.handle = receive;
+  driven.set(key, seam);
+  panel.webview.onDidReceiveMessage((raw: unknown) => void receive(raw));
   panel.onDidDispose(() => {
     open.delete(key);
+    driven.delete(key);
     // A draft that got applied is now addressable by name; the key it
     // was opened under is gone either way.
     if (controller.name && controller.name !== name) {
@@ -321,6 +370,62 @@ export async function openResourcePanel(
     }
   });
   return panel;
+}
+
+interface DrivenPanel {
+  /** Every message the host has posted to the webview, in order. */
+  posted: HostMessage[];
+  /** The live host's prompt answers; set only while a drive is in flight. */
+  answers: { current?: DriveAnswers };
+  /** The panel's own receive path — identical to `onDidReceiveMessage`. */
+  handle: (raw: unknown) => Promise<void>;
+}
+
+const driven = new Map<string, DrivenPanel>();
+
+/**
+ * Feed one webview-shaped message into an OPEN panel's controller and
+ * return everything the host posted back while handling it.
+ *
+ * This is the seam a script uses to drive the panel from outside the
+ * window: `executeCommand` can open a panel but nothing outside the
+ * webview can type into it, and the safety rails (modal confirms,
+ * type-the-name delete) are precisely what a command cannot answer. The
+ * message goes through the same `receive` the webview's own messages
+ * do, and the posts come from the same `host.post`, so what a script
+ * observes is what the webview would have been shown — the operator's
+ * reload after an apply included. Exposed as a command only in
+ * `ExtensionMode.Development` (extension.ts); a release build has no
+ * caller.
+ *
+ * `answers` pre-answers the modal prompts the message may reach (the
+ * apply confirm, the 409 prompt, the delete confirm) for this one
+ * message only; an answer that is not supplied shows the modal as it
+ * would for a person. The prompts are native dialogs on Linux and no
+ * command can press them — which is also why the safety rails they
+ * guard cannot be bypassed by a script that does not say so explicitly.
+ */
+export async function drivePanel(
+  profile: Pick<Profile, "id" | "fqdn">,
+  kind: string,
+  name: string | undefined,
+  message: unknown,
+  answers?: DriveAnswers,
+): Promise<HostMessage[]> {
+  const seam = driven.get(panelKey(profile, kind, name));
+  if (!seam) {
+    throw new Error(
+      `no open ${kind} panel for ${name ?? "<new>"} on ${profile.fqdn}`,
+    );
+  }
+  const before = seam.posted.length;
+  seam.answers.current = answers;
+  try {
+    await seam.handle(message);
+  } finally {
+    seam.answers.current = undefined;
+  }
+  return seam.posted.slice(before);
 }
 
 /** "Airdress: New Function…" — pick the profile, open an empty draft. */

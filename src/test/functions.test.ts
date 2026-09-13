@@ -17,6 +17,7 @@ import {
   cspNonce,
   openResourcePanel,
   panelHtml,
+  drivePanel,
 } from "../webview/panel";
 import {
   emptyManifest,
@@ -763,5 +764,46 @@ suite("Function panel: contributions and shell", () => {
     );
     assert.notStrictEqual(fresh, first);
     fresh.dispose();
+  });
+
+  test("drivePanel feeds an open panel's controller and returns what the host posted", async () => {
+    const { root } = pkg();
+    const host = new FakeHost();
+    const deps = {
+      manifest: {} as ManifestDeps,
+      extensionUri: vscode.Uri.file(root),
+      hostFor: () => host,
+    };
+    const panel = await openResourcePanel(
+      deps,
+      PROFILE,
+      "Function",
+      "relay-to-op2",
+    );
+    try {
+      const posted = await drivePanel(PROFILE, "Function", "relay-to-op2", {
+        type: "load",
+      });
+      // The same receive path as the webview: a load fetches and posts state.
+      const state = posted.find((m) => m.type === "state") as
+        { manifest: { metadata: { name: string } } } | undefined;
+      assert.ok(state, JSON.stringify(posted));
+      assert.strictEqual(state.manifest.metadata.name, "relay-to-op2");
+      // A malformed message reaches the same error notice the webview would.
+      const bad = await drivePanel(PROFILE, "Function", "relay-to-op2", {
+        type: "apply",
+      });
+      assert.ok(
+        bad.some((m) => m.type === "notice"),
+        JSON.stringify(bad),
+      );
+    } finally {
+      panel.dispose();
+    }
+    // Disposed panels are not drivable — the seam does not outlive the panel.
+    await assert.rejects(
+      drivePanel(PROFILE, "Function", "relay-to-op2", { type: "load" }),
+      /no open Function panel/,
+    );
   });
 });

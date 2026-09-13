@@ -45,6 +45,7 @@ import {
   newResourceCommand,
   openResourcePanel,
   type ResourcePanelDeps,
+  drivePanel,
 } from "./webview/panel";
 import * as YAML from "yaml";
 
@@ -204,6 +205,7 @@ export function activate(context: vscode.ExtensionContext): void {
   breakGlassItem.backgroundColor = new vscode.ThemeColor(
     "statusBarItem.warningBackground",
   );
+
   async function refreshBreakGlass(): Promise<void> {
     const active = activeProfile();
     if (!active) {
@@ -642,6 +644,34 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
   );
+
+  // Development-mode only: a script's way into an open panel — the same
+  // receive path as the webview's own messages, returning what the host
+  // posted back (see `drivePanel`). A release build never registers it,
+  // so it is absent from the command table, not merely hidden.
+  if (context.extensionMode === vscode.ExtensionMode.Development) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        "airdress.dev.drivePanel",
+        (...args: Parameters<typeof drivePanel>) => drivePanel(...args),
+      ),
+      // The quick-picks in front of a draft (profile, then Kind) are
+      // VS Code chrome a script cannot answer; this opens the same
+      // panel `airdress.resources.create` opens once they are answered.
+      vscode.commands.registerCommand(
+        "airdress.dev.openPanel",
+        async (profile: Profile, kind: string, name?: string) => {
+          const panel = await openResourcePanel(
+            resourcePanelDeps,
+            profile,
+            kind,
+            name,
+          );
+          return panel.title;
+        },
+      ),
+    );
+  }
 }
 
 export function deactivate(): void {

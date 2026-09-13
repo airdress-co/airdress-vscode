@@ -372,3 +372,54 @@ suite(
     });
   },
 );
+
+suite("resource panel — apply outcome reaches the controller", () => {
+  test("a declined apply confirm is news, not an error, and does not rebind or reload", async () => {
+    const host = new FakeHost();
+    host.applyYaml = async (yaml: string) => {
+      host.calls.push(`applyYaml ${yaml.length}`);
+      throw Object.assign(
+        new Error("apply cancelled — the confirm was declined"),
+        {
+          cancelled: true,
+        },
+      );
+    };
+    const c = controller(host);
+    await c.handle({ type: "apply", manifest: ipmManifest() });
+    assert.strictEqual(c.name, undefined, "a cancelled create stays a draft");
+    assert.ok(
+      !host.calls.some((l) => l.startsWith("fetchManifest")),
+      host.calls.join(),
+    );
+    const notice = host.posted.find((m) => m.type === "notice") as
+      { level: string; message: string } | undefined;
+    assert.strictEqual(notice?.level, "info");
+    assert.match(notice?.message ?? "", /cancelled; nothing was written/);
+  });
+
+  test("a refused apply rejects with the operator's words — the panel shell posts them — and does not reload", async () => {
+    const host = new FakeHost();
+    host.applyYaml = async () => {
+      throw new Error("spec.backend: echo members may not name a url");
+    };
+    const c = controller(host);
+    await assert.rejects(
+      c.handle({ type: "apply", manifest: ipmManifest() }),
+      /echo members may not name a url/,
+    );
+    assert.strictEqual(c.name, undefined, "a refused create stays a draft");
+    assert.ok(!host.calls.some((l) => l.startsWith("fetchManifest")));
+  });
+
+  test("delete names the panel's Kind, and only a Function has a route to stop", async () => {
+    const host = new FakeHost();
+    const c = controller(host, { name: "vllm-0" });
+    await c.handle({ type: "load" });
+    await c.handle({ type: "delete" });
+    assert.ok(host.calls.includes("deleteResource vllm-0"));
+    const done = host.notices().find((m) => /deleted from/.test(m)) ?? "";
+    assert.match(done, /InferencePoolMember\/vllm-0 deleted/);
+    assert.doesNotMatch(done, /\/fn\//);
+  });
+});

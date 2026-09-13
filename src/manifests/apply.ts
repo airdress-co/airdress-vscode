@@ -254,29 +254,51 @@ async function pickApplyScope(
   return picked.map((p) => p.doc);
 }
 
+export interface ApplyOptions {
+  /**
+   * A pre-supplied answer to the modal confirm. Undefined — every user
+   * path — shows the modal. Only the resource panel's script seam
+   * (`drivePanel`, Development mode) ever sets it: the modal is native
+   * on this platform and nothing outside the window can press it.
+   */
+  confirm?: boolean;
+}
+
 /**
  * "Airdress: Apply Manifest" — POST /v1/apply after a modal confirm
  * that names the selected resources and the profile + FQDN. Files
  * declaring several resources support applying a selected subset.
  */
+/**
+ * What `applyManifest` did — so a caller that is not the command palette
+ * (the resource panel) can tell an apply that landed from one that was
+ * cancelled or refused. The command's own reporting (messages,
+ * diagnostics on the document) is unchanged; this is in addition to it.
+ */
+export type ApplyOutcome =
+  | { status: "applied"; applied: string[]; accepted: boolean }
+  | { status: "cancelled"; reason: string }
+  | { status: "failed"; applied: string[]; error: unknown };
+
 export async function applyManifest(
   deps: ManifestDeps,
   explicitProfile?: Profile,
-): Promise<void> {
+  opts: ApplyOptions = {},
+): Promise<ApplyOutcome> {
   const doc = vscode.window.activeTextEditor?.document;
   if (!doc || !["yaml", "json"].includes(doc.languageId)) {
     void vscode.window.showWarningMessage(
       "Airdress: open a YAML or JSON manifest first. " +
         "(Fleet TOML manifests are applied by pyinfra, never by this extension.)",
     );
-    return;
+    return { status: "cancelled", reason: "no YAML or JSON manifest is open" };
   }
   const plan = planApplyDocuments(doc.getText(), doc.languageId);
   if ("error" in plan) {
     void vscode.window.showErrorMessage(
       `Airdress: cannot apply — ${plan.error}`,
     );
-    return;
+    return { status: "cancelled", reason: "the manifest could not be planned" };
   }
 
   // Pre-apply validation: hard-invalid blocks; unknown kind proceeds
@@ -288,28 +310,36 @@ export async function applyManifest(
       void vscode.window.showErrorMessage(
         "Airdress: the manifest fails schema validation — fix the diagnostics first.",
       );
-      return;
+      return {
+        status: "cancelled",
+        reason: "the manifest fails schema validation",
+      };
     }
   }
 
   const selected = await pickApplyScope(plan.docs);
   if (!selected) {
-    return;
+    return { status: "cancelled", reason: "no apply scope was chosen" };
   }
 
   const profile = await resolveProfile(deps.profiles, explicitProfile);
   if (!profile) {
-    return;
+    return { status: "cancelled", reason: "no profile was chosen" };
   }
 
   const confirmation = applyConfirmation(selected, profile);
-  const confirm = await vscode.window.showWarningMessage(
-    confirmation.message,
-    { modal: true, detail: confirmation.detail },
-    "Apply",
-  );
+  const confirm =
+    opts.confirm === undefined
+      ? await vscode.window.showWarningMessage(
+          confirmation.message,
+          { modal: true, detail: confirmation.detail },
+          "Apply",
+        )
+      : opts.confirm
+        ? "Apply"
+        : undefined;
   if (confirm !== "Apply") {
-    return;
+    return { status: "cancelled", reason: "the confirm was declined" };
   }
 
   const applied: string[] = [];
@@ -345,7 +375,7 @@ export async function applyManifest(
           }${done}`,
         );
       }
-      return;
+      return { status: "failed", applied, error: err };
     }
   }
   diagnostics.set(doc.uri, []);
@@ -356,4 +386,5 @@ export async function applyManifest(
       ? `Airdress: ${what} accepted by ${profile.fqdn} (reconciling).`
       : `Airdress: ${what} applied to ${profile.fqdn}.`,
   );
+  return { status: "applied", applied, accepted };
 }
