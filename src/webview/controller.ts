@@ -37,7 +37,12 @@ export interface ResourcePanelHost {
   fetchManifest(name: string): Promise<ManifestObject>;
   /** `GET /v1/kinds/Function/<name>/status`, decoded. */
   fetchStatus(name: string): Promise<ResourceStatus>;
-  /** Hands YAML to the existing apply command; resolves when it returns. */
+  /**
+   * Hands YAML to the existing apply command. Resolves only when the
+   * operator took the manifest; rejects with the operator's error when
+   * it refused (a 409 reaches `confirmConflict`), and with
+   * `{ cancelled: true }` when the user declined the confirm.
+   */
   applyYaml(yaml: string): Promise<void>;
   /** Hands YAML to the existing diff command. */
   diffYaml(yaml: string): Promise<void>;
@@ -123,6 +128,19 @@ export function isConflict(err: unknown): boolean {
     return true;
   }
   return err instanceof Error && /\b409\b|conflict/i.test(err.message);
+}
+
+/**
+ * A host's `applyYaml` rejects with `{ cancelled: true }` when the user
+ * declined the apply confirm — nothing was written, and that is news,
+ * not an error.
+ */
+export function isCancelled(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { cancelled?: unknown }).cancelled === true
+  );
 }
 
 /** Name a manifest declares, or "" when unnamed. */
@@ -379,13 +397,20 @@ export class ResourcePanelController {
           });
           return;
         }
+      } else if (isCancelled(err)) {
+        this.host.post({
+          type: "notice",
+          level: "info",
+          message: "Airdress: apply cancelled; nothing was written.",
+        });
+        return;
       } else {
         throw err;
       }
     }
-    // The apply flow confirms and reports by itself; whatever it did,
-    // the panel is now bound to the name and shows what the operator
-    // holds after the fact.
+    // `applyYaml` resolved, so the operator took it: the panel is now
+    // bound to the name and shows what the operator holds after the
+    // fact — including the resourceVersion the next apply must carry.
     this.boundName = name;
     await this.load();
   }
@@ -438,8 +463,7 @@ export class ResourcePanelController {
       this.host.post({
         type: "notice",
         level: "info",
-        message:
-          "Airdress: this function has not been applied — nothing to delete.",
+        message: `Airdress: this ${this.opts.kind} has not been applied — nothing to delete.`,
       });
       return;
     }
@@ -447,20 +471,27 @@ export class ResourcePanelController {
       return;
     }
     this.host.post({ type: "busy", what: "deleting" });
+    const kind = this.opts.kind;
     try {
       await this.host.deleteResource(this.boundName);
     } catch (err) {
       this.host.post({
         type: "notice",
         level: "error",
-        message: `Airdress: deleting Function/${this.boundName} from ${this.host.profile.fqdn} failed — ${describe(err)}`,
+        message: `Airdress: deleting ${kind}/${this.boundName} from ${this.host.profile.fqdn} failed — ${describe(err)}`,
       });
       return;
     }
+    // Only a Function has a route to stop answering; every other Kind
+    // just has its reconciled effect torn down.
+    const effect =
+      capabilitiesFor(kind).extras === "function"
+        ? `${functionRoute(this.boundName)} no longer answers.`
+        : "its reconciled effect is being torn down.";
     this.host.post({
       type: "notice",
       level: "info",
-      message: `Airdress: Function/${this.boundName} deleted from ${this.host.profile.fqdn}; ${functionRoute(this.boundName)} no longer answers.`,
+      message: `Airdress: ${kind}/${this.boundName} deleted from ${this.host.profile.fqdn}; ${effect}`,
     });
     this.host.post({ type: "closed" });
     this.host.close();

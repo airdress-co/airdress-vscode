@@ -305,15 +305,20 @@ function overview(v: View): HTMLElement {
   nameRow.append(nameLabel, nameInput, el("div", "field-diagnostics"));
   section.append(nameRow);
 
-  const routeRow = el("div", "field");
-  routeRow.append(el("span", "field-label", "Route"));
+  // The route is a Function affordance: `/fn/<name>` means nothing for
+  // a pool member or a schedule. (Seen on hardware — an
+  // InferencePoolMember panel showing "Route /fn/spec-093-verify".)
   const routeValue = el(
     "code",
     "route",
     v.status?.route ?? functionRoute(name() || "<name>"),
   );
-  routeRow.append(routeValue);
-  section.append(routeRow);
+  if (hasFunctionExtras(v.kind)) {
+    const routeRow = el("div", "field");
+    routeRow.append(el("span", "field-label", "Route"));
+    routeRow.append(routeValue);
+    section.append(routeRow);
+  }
 
   const target = el("div", "field");
   target.append(el("span", "field-label", "Operator"));
