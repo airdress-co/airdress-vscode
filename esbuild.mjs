@@ -35,12 +35,21 @@ const webview = {
   target: "es2022",
 };
 
+/** The selector view's browser bundle — same rules as the panel's. */
+const selector = {
+  ...shared,
+  entryPoints: ["src/selector/browser/main.ts"],
+  outfile: "dist/selector.js",
+  format: "iife",
+  platform: "browser",
+  target: "es2022",
+};
+
+const bundles = [extension, webview, selector];
+
 if (watch) {
-  const contexts = await Promise.all([
-    esbuild.context(extension),
-    esbuild.context(webview),
-  ]);
+  const contexts = await Promise.all(bundles.map((b) => esbuild.context(b)));
   await Promise.all(contexts.map((ctx) => ctx.watch()));
 } else {
-  await Promise.all([esbuild.build(extension), esbuild.build(webview)]);
+  await Promise.all(bundles.map((b) => esbuild.build(b)));
 }

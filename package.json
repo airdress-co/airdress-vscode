@@ -121,6 +121,10 @@
         "command": "airdress.resources.delete",
         "title": "Airdress: Delete Resource",
         "icon": "$(trash)"
+      },
+      {
+        "command": "airdress.selector.refresh",
+        "title": "Airdress: Refresh Airdress State"
       }
     ],
     "viewsContainers": {
@@ -134,6 +138,12 @@
     },
     "views": {
       "airdress": [
+        {
+          "type": "webview",
+          "id": "airdress.selector",
+          "name": "Airdress",
+          "initialSize": 1
+        },
         {
           "id": "airdress.operators",
           "name": "Operators"
