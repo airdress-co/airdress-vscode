@@ -14,6 +14,34 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.3.0](https://github.com/airdress-co/airdress-vscode/compare/v0.2.0...v0.3.0) (2026-09-13)
+
+
+### Features
+
+* **auth:** airdress.auth.authorizeBase setting for the branded sign-in entry ([836eebe](https://github.com/airdress-co/airdress-vscode/commit/836eebed013ebd4d0fe567eb2bafd6a3b34a15e0))
+* **auth:** airdress.auth.route setting to force the loopback sign-in route ([b6cc8aa](https://github.com/airdress-co/airdress-vscode/commit/b6cc8aad7278bb594509516645985d32681eea45))
+* **auth:** credential state is a reported fact, and "Sign In Again" refreshes a profile in place ([d7b222e](https://github.com/airdress-co/airdress-vscode/commit/d7b222e3a893135563619585a85a3d155ec984fa))
+* **functions:** a configuration panel drawn from the Function schema ([21de97c](https://github.com/airdress-co/airdress-vscode/commit/21de97cb9f5bc4aa2a23651aefac56c6a26f3f7c))
+* **functions:** configure from a Function row, or draft a new one ([ab71e5b](https://github.com/airdress-co/airdress-vscode/commit/ab71e5babdd3b96003a88da95cb8f9d74a111c12))
+* **manifests:** Function is a known kind — validated, diffable, drift-scannable ([2ffb4d0](https://github.com/airdress-co/airdress-vscode/commit/2ffb4d0cf33745933a5f2418fc3b656b6260b5d6))
+* **panel:** a development-only drive seam, and what driving it found ([cc69538](https://github.com/airdress-co/airdress-vscode/commit/cc69538aafa7ed6c71779ef7e613afcf9fb8ef99))
+* **profiles:** the active airdress is the standing target; one signed-in row per airdress ([0d9923d](https://github.com/airdress-co/airdress-vscode/commit/0d9923daf0c166fb1bd3b58771aa23ae090cee89))
+* **selector:** a standing Airdress view — which airdress, whether it answers, whether you are signed in ([d421edd](https://github.com/airdress-co/airdress-vscode/commit/d421edd5b4044326ba399f02b34fdfdd5e0946d6))
+* **spec-088:** sync the published Function schema and follow it ([27abe94](https://github.com/airdress-co/airdress-vscode/commit/27abe94692329b42720212d72d9fe1e64346192d))
+* **spec-093:** create, edit and delete any Kind from the resource tree ([88d8345](https://github.com/airdress-co/airdress-vscode/commit/88d83452b0e4a3b60d50f351b16f12811a09233c))
+
+
+### Bug Fixes
+
+* **apply:** POST /v1/apply as JSON — the operator's handler never took YAML ([a48298f](https://github.com/airdress-co/airdress-vscode/commit/a48298fc3b37b8386ee617f8e146fbd09e778dd4))
+* **apply:** surface the operator's {error, path} rejection shape as anchored diagnostics ([ca3f6a8](https://github.com/airdress-co/airdress-vscode/commit/ca3f6a84bc3fc89b04a9ef7c48c734d9e37a5d3a))
+* **auth:** one refresh exchange in flight per profile ([160c43c](https://github.com/airdress-co/airdress-vscode/commit/160c43c65c7a981a4eaac76d9549d5fd2ee69631))
+* **auth:** send the bare registered redirect_uri to the IdP ([f4ea286](https://github.com/airdress-co/airdress-vscode/commit/f4ea286c591cbda06392cc82a9aebe27beed7a68))
+* **panel:** a post after dispose is dropped, not thrown ([e1ae14b](https://github.com/airdress-co/airdress-vscode/commit/e1ae14b1fe58a07f173a72caf3b8d9d5ff00d1b4))
+* **profiles:** connecting an airdress you already have refreshes it — no twin row ([b3c9945](https://github.com/airdress-co/airdress-vscode/commit/b3c994515a0727a9a8bac0ecbdc0f4b495f62a38))
+* **tree:** decode live operator response shapes; generate API types from the contract ([f42965f](https://github.com/airdress-co/airdress-vscode/commit/f42965fad402b6dbefd8b316f5007a14229c5ae7))
+
 ## [0.2.0](https://github.com/airdress-co/airdress-vscode/compare/v0.1.0...v0.2.0) (2026-09-04)
 
 ### Features
