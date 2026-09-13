@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import { ApiError } from "../api/client";
 import type { Profile } from "../profiles/model";
+import {
+  bindIdentityPrompt,
+  createSubUserConfirm,
+  revokeSubUserTitle,
+} from "../profiles/confirm";
 import type { ManifestDeps } from "../manifests/diff";
 import { clientFor } from "../manifests/diff";
 import type { TreeNodeData } from "../tree/nodes";
@@ -34,7 +39,11 @@ export interface PrincipalAdminUI {
   /** Type-to-confirm: resolves the TYPED text, or undefined on cancel. */
   promptRevokeName(name: string, profile: Profile): Promise<string | undefined>;
   offerRunbook(url: string): Promise<void>;
-  promptOidcSub(issuer: string, name: string): Promise<string | undefined>;
+  promptOidcSub(
+    issuer: string,
+    name: string,
+    profile: Profile,
+  ): Promise<string | undefined>;
   info(message: string): void;
   error(message: string): void;
 }
@@ -83,7 +92,7 @@ export const defaultAdminUI: PrincipalAdminUI = {
   },
   async confirmCreate(name, profile) {
     const choice = await vscode.window.showWarningMessage(
-      `Create sub-user '${name}' on profile "${profile.label}" (${profile.fqdn})?`,
+      createSubUserConfirm(name, profile),
       { modal: true },
       "Create",
     );
@@ -113,7 +122,7 @@ export const defaultAdminUI: PrincipalAdminUI = {
   },
   async promptRevokeName(name, profile) {
     return vscode.window.showInputBox({
-      title: `Airdress: Revoke sub-user '${name}' on ${profile.fqdn}`,
+      title: revokeSubUserTitle(name, profile),
       prompt:
         "This cannot be undone: the sub-user's derived keys are " +
         "destroyed. Offboarding has steps outside the operator — the " +
@@ -135,13 +144,10 @@ export const defaultAdminUI: PrincipalAdminUI = {
       await vscode.env.openExternal(vscode.Uri.parse(url));
     }
   },
-  async promptOidcSub(issuer, name) {
+  async promptOidcSub(issuer, name, profile) {
     return vscode.window.showInputBox({
       title: `Airdress: Attach an Identity to '${name}'`,
-      prompt:
-        `Issuer (from this profile's auth configuration): ${issuer} — ` +
-        "enter the subject (sub) of the identity to attach. Binding is " +
-        "idempotent: repeating it with the same identity is a no-op.",
+      prompt: bindIdentityPrompt(issuer, name, profile),
       ignoreFocusOut: true,
       validateInput: (v) =>
         v.trim().length === 0 ? "Subject must not be empty." : undefined,
@@ -320,7 +326,7 @@ export async function bindOidcIdentity(
   }
   const { profile, principal } = node;
   const sub = (
-    await deps.ui.promptOidcSub(issuer, principal.displayName)
+    await deps.ui.promptOidcSub(issuer, principal.displayName, profile)
   )?.trim();
   if (!sub) {
     return;
