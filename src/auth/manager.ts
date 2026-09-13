@@ -32,6 +32,21 @@ export interface AuthTarget {
   authMode: AuthMode;
 }
 
+/**
+ * What the last thing that touched a profile's credential learned.
+ * A FACT about the credential, reported by the code that observed it —
+ * never inferred from "a secret exists": a stored refresh token whose
+ * silent refresh fails is `no-credential`, and an operator answering
+ * 401 is `unauthorized`, both the moment they happen.
+ */
+export type CredentialOutcome =
+  "ok" | "unauthorized" | "no-credential" | "unknown";
+
+export interface CredentialChange {
+  profileId: string;
+  outcome: CredentialOutcome;
+}
+
 interface Deps {
   refreshFn: typeof refreshGrant;
   signInFn: typeof zitadelSignIn;
@@ -44,6 +59,9 @@ export class AuthManager {
   /** The one refresh exchange in flight per profile, if any. */
   private readonly refreshing = new Map<string, Promise<string | undefined>>();
   private readonly deps: Deps;
+  /** Last reported outcome per profile — what the selector shows. */
+  private readonly outcomes = new Map<string, CredentialOutcome>();
+  private readonly listeners = new Set<(change: CredentialChange) => void>();
 
   constructor(
     private readonly secrets: SecretStore,
@@ -69,11 +87,45 @@ export class AuthManager {
     if (tokens.refreshToken) {
       await this.secrets.setRefreshToken(profileId, tokens.refreshToken);
     }
+    this.report(profileId, "ok");
+  }
+
+  /**
+   * Subscribe to credential outcomes. The payload names a profile id and
+   * an outcome — never a token or a fragment of one (a test greps it).
+   */
+  onDidChangeCredential(listener: (change: CredentialChange) => void): {
+    dispose(): void;
+  } {
+    this.listeners.add(listener);
+    return { dispose: () => this.listeners.delete(listener) };
+  }
+
+  /** The last reported outcome for a profile; `unknown` until one is. */
+  outcomeFor(profileId: string): CredentialOutcome {
+    return this.outcomes.get(profileId) ?? "unknown";
+  }
+
+  /** The API client saw a 401 on this profile's bearer. */
+  reportUnauthorized(profileId: string): void {
+    this.accessTokens.delete(profileId);
+    this.report(profileId, "unauthorized");
+  }
+
+  private report(profileId: string, outcome: CredentialOutcome): void {
+    if (this.outcomes.get(profileId) === outcome) {
+      return;
+    }
+    this.outcomes.set(profileId, outcome);
+    for (const listener of this.listeners) {
+      listener({ profileId, outcome });
+    }
   }
 
   /** Store an opaque operator bearer for a profile. */
   async setBearer(profileId: string, token: string): Promise<void> {
     await this.secrets.setBearer(profileId, token);
+    this.report(profileId, "ok");
   }
 
   /**
@@ -88,7 +140,11 @@ export class AuthManager {
    */
   async getAccessToken(target: AuthTarget): Promise<string | undefined> {
     if (target.authMode === "bearer") {
-      return this.secrets.getBearer(target.id);
+      const bearer = await this.secrets.getBearer(target.id);
+      if (!bearer) {
+        this.report(target.id, "no-credential");
+      }
+      return bearer;
     }
 
     const cached = this.accessTokens.get(target.id);
@@ -117,20 +173,25 @@ export class AuthManager {
   private async refreshOnce(profileId: string): Promise<string | undefined> {
     const refreshToken = await this.secrets.getRefreshToken(profileId);
     if (!refreshToken) {
+      this.report(profileId, "no-credential");
       return undefined;
     }
     let tokens: TokenSet;
     try {
       tokens = await this.deps.refreshFn(this.deps.getConfig(), refreshToken);
     } catch {
-      // Refresh failed (expired/revoked). Callers surface a single
-      // re-auth prompt per profile — never a request storm (design §9).
+      // Refresh failed (expired/revoked). The outcome is REPORTED — it
+      // used to be swallowed, and a profile with a dead refresh token
+      // read as signed in until a request failed. Callers still surface
+      // at most one re-auth prompt per profile (design §9).
+      this.report(profileId, "no-credential");
       return undefined;
     }
     this.accessTokens.set(profileId, tokens);
     if (tokens.refreshToken && tokens.refreshToken !== refreshToken) {
       await this.secrets.setRefreshToken(profileId, tokens.refreshToken);
     }
+    this.report(profileId, "ok");
     return tokens.accessToken;
   }
 
@@ -166,11 +227,16 @@ export class AuthManager {
       await this.secrets.setRefreshToken(toId, refreshToken);
     }
     await this.signOut(fromId);
+    this.report(toId, "ok");
   }
 
   /** Sign out: drop the in-memory token and every stored secret. */
   async signOut(profileId: string): Promise<void> {
     this.accessTokens.delete(profileId);
     await this.secrets.clearProfile(profileId);
+    this.outcomes.delete(profileId);
+    for (const listener of this.listeners) {
+      listener({ profileId, outcome: "no-credential" });
+    }
   }
 }

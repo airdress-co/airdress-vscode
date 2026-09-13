@@ -1,7 +1,7 @@
 {
   "name": "airdress-vscode",
   "displayName": "Airdress",
-  "description": "Your Airdress operators, in your editor — sign in, switch, validate and apply manifests with intent.",
+  "description": "Your Airdress operators, in your editor \u2014 sign in, switch, validate and apply manifests with intent.",
   "version": "0.2.0",
   "publisher": "airdress",
   "license": "MIT",
@@ -33,6 +33,10 @@
       {
         "command": "airdress.profiles.pick",
         "title": "Airdress: Switch Operator Profile"
+      },
+      {
+        "command": "airdress.profiles.signInAgain",
+        "title": "Airdress: Sign In Again"
       },
       {
         "command": "airdress.profiles.signOut",
@@ -72,7 +76,7 @@
       },
       {
         "command": "airdress.principals.revoke",
-        "title": "Airdress: Revoke Sub-User…"
+        "title": "Airdress: Revoke Sub-User\u2026"
       },
       {
         "command": "airdress.principals.metadata",
@@ -101,11 +105,11 @@
       },
       {
         "command": "airdress.functions.new",
-        "title": "Airdress: New Function…"
+        "title": "Airdress: New Function\u2026"
       },
       {
         "command": "airdress.resources.create",
-        "title": "Airdress: New Resource…",
+        "title": "Airdress: New Resource\u2026",
         "icon": "$(add)"
       },
       {
@@ -148,7 +152,7 @@
     "viewsWelcome": [
       {
         "view": "airdress.operators",
-        "contents": "No operators here yet. Sign in and pick from the Airdresses your account has claimed — the hub already knows which names are yours.\n[Connect an Airdress](command:airdress.connectAirdress)\nHave a hostname or an operator token instead? [Add a profile by hostname](command:airdress.profiles.add)"
+        "contents": "No operators here yet. Sign in and pick from the Airdresses your account has claimed \u2014 the hub already knows which names are yours.\n[Connect an Airdress](command:airdress.connectAirdress)\nHave a hostname or an operator token instead? [Add a profile by hostname](command:airdress.profiles.add)"
       }
     ],
     "menus": {
@@ -266,12 +270,12 @@
         "airdress.auth.clientId": {
           "type": "string",
           "default": "389189092820182216",
-          "description": "ZITADEL native public client ID (PKCE only — there is no client secret)."
+          "description": "ZITADEL native public client ID (PKCE only \u2014 there is no client secret)."
         },
         "airdress.auth.scopes": {
           "type": "string",
           "default": "openid profile email offline_access urn:zitadel:iam:org:project:id:368173150459965108:aud",
-          "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:…:aud scope is load-bearing — without it the token is valid everywhere except at the operator."
+          "description": "Space-separated OIDC scopes. The urn:zitadel:iam:org:project:id:\u2026:aud scope is load-bearing \u2014 without it the token is valid everywhere except at the operator."
         },
         "airdress.auth.authorizeBase": {
           "type": "string",
@@ -285,7 +289,7 @@
             "loopback"
           ],
           "default": "auto",
-          "markdownDescription": "How the sign-in callback returns to the editor. `auto` uses the registered `vscode://` handler with a loopback fallback; `loopback` always uses an RFC 8252 loopback listener on 127.0.0.1. Loopback is the reliable choice when several editor instances run side by side — the operating system may deliver a `vscode://` callback to the wrong instance."
+          "markdownDescription": "How the sign-in callback returns to the editor. `auto` uses the registered `vscode://` handler with a loopback fallback; `loopback` always uses an RFC 8252 loopback listener on 127.0.0.1. Loopback is the reliable choice when several editor instances run side by side \u2014 the operating system may deliver a `vscode://` callback to the wrong instance."
         },
         "airdress.hub.url": {
           "type": "string",
