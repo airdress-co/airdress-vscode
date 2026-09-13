@@ -148,6 +148,29 @@ class FakeHost implements ResourcePanelHost {
   }
 }
 
+/**
+ * `openResourcePanel` SPREADS the host it is handed (`{ ...base, post,
+ * close, profile }`), and a spread copies own properties only — a class
+ * instance loses its prototype methods. A fake handed in directly
+ * therefore "works" for as long as nothing calls a method: the load
+ * test here once passed on the loadError path with
+ * "this.host.fetchManifest is not a function" inside it. Bind first.
+ */
+function asHost(fake: FakeHost): ResourcePanelHost {
+  return {
+    profile: fake.profile,
+    fetchManifest: (n) => fake.fetchManifest(n),
+    fetchStatus: (n) => fake.fetchStatus(n),
+    applyYaml: (y) => fake.applyYaml(y),
+    diffYaml: (y) => fake.diffYaml(y),
+    invoke: (n, b) => fake.invoke(n, b),
+    confirmDelete: (n) => fake.confirmDelete(n),
+    deleteResource: (n) => fake.deleteResource(n),
+    post: (m) => fake.post(m),
+    close: () => fake.close(),
+  };
+}
+
 function controller(host: FakeHost, name?: string): ResourcePanelController {
   return new ResourcePanelController(host, {
     kind: "Function",
@@ -772,7 +795,7 @@ suite("Function panel: contributions and shell", () => {
     const deps = {
       manifest: {} as ManifestDeps,
       extensionUri: vscode.Uri.file(root),
-      hostFor: () => host,
+      hostFor: () => asHost(host),
     };
     const panel = await openResourcePanel(
       deps,
@@ -789,6 +812,11 @@ suite("Function panel: contributions and shell", () => {
         { manifest: { metadata: { name: string } } } | undefined;
       assert.ok(state, JSON.stringify(posted));
       assert.strictEqual(state.manifest.metadata.name, "relay-to-op2");
+      assert.strictEqual(
+        (state as { loadError?: string }).loadError,
+        undefined,
+        "the fake answered — not the loadError path",
+      );
       // A malformed message reaches the same error notice the webview would.
       const bad = await drivePanel(PROFILE, "Function", "relay-to-op2", {
         type: "apply",
@@ -800,6 +828,32 @@ suite("Function panel: contributions and shell", () => {
     } finally {
       panel.dispose();
     }
+    // A delete disposes the panel from inside handle(); the trailing idle
+    // post must not throw into the driver (or into the webview's own
+    // receive path, where it would be an unhandled rejection).
+    const doomed = await openResourcePanel(
+      deps,
+      PROFILE,
+      "Function",
+      "relay-to-op2",
+    );
+    await drivePanel(PROFILE, "Function", "relay-to-op2", { type: "load" });
+    const closing = await drivePanel(PROFILE, "Function", "relay-to-op2", {
+      type: "delete",
+    });
+    assert.ok(
+      closing.some((m) => m.type === "closed"),
+      JSON.stringify(closing),
+    );
+    assert.ok(host.calls.includes("deleteResource relay-to-op2"));
+    const reopened = await openResourcePanel(
+      deps,
+      PROFILE,
+      "Function",
+      "relay-to-op2",
+    );
+    assert.notStrictEqual(reopened, doomed, "the panel is gone");
+    reopened.dispose();
     // Disposed panels are not drivable — the seam does not outlive the panel.
     await assert.rejects(
       drivePanel(PROFILE, "Function", "relay-to-op2", { type: "load" }),

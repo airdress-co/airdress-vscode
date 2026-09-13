@@ -45,7 +45,11 @@ export const RESOURCE_PANEL_VIEW_TYPE = "airdress.resourceConfig";
 export interface ResourcePanelDeps {
   manifest: ManifestDeps;
   extensionUri: vscode.Uri;
-  /** Overridable for tests; defaults to the live host. */
+  /**
+   * Overridable for tests; defaults to the live host. Must be a PLAIN
+   * object: it is spread into the panel's host, and a spread keeps own
+   * properties only — a class instance loses its methods.
+   */
   hostFor?: (
     panel: vscode.WebviewPanel,
     profile: Profile,
@@ -333,10 +337,18 @@ export async function openResourcePanel(
     answers,
     handle: async () => undefined,
   };
+  // A delete closes the panel from inside `handle`, whose `finally`
+  // still posts the idle "busy" message — onto a disposed webview,
+  // which throws. Seen through the drive seam on 2026-09-13. After
+  // dispose there is nobody to tell, so a post is dropped, not thrown.
+  let disposed = false;
   const host: ResourcePanelHost = {
     ...base,
     profile: { label: profile.label, fqdn: profile.fqdn },
     post: (message: HostMessage) => {
+      if (disposed) {
+        return;
+      }
       seam.posted.push(message);
       void panel.webview.postMessage(message);
     },
@@ -361,6 +373,7 @@ export async function openResourcePanel(
   driven.set(key, seam);
   panel.webview.onDidReceiveMessage((raw: unknown) => void receive(raw));
   panel.onDidDispose(() => {
+    disposed = true;
     open.delete(key);
     driven.delete(key);
     // A draft that got applied is now addressable by name; the key it
