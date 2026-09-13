@@ -14,6 +14,18 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.4.0](https://github.com/airdress-co/airdress-vscode/compare/v0.3.0...v0.4.0) (2026-09-13)
+
+
+### Features
+
+* **dev:** connect an airdress by FQDN, with the flow's own words returned ([eaf7450](https://github.com/airdress-co/airdress-vscode/commit/eaf745030590e8c9d777990d720ed1176ca07b3e))
+
+
+### Bug Fixes
+
+* **panel:** a taken apply closes its document; sign-out takes an explicit target ([d1271ac](https://github.com/airdress-co/airdress-vscode/commit/d1271ac25bc884b200f30a74fd35c24bec8d22be))
+
 ## [0.3.0](https://github.com/airdress-co/airdress-vscode/compare/v0.2.0...v0.3.0) (2026-09-13)
 
 
