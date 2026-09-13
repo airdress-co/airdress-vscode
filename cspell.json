@@ -15,6 +15,7 @@
     "package-lock.json",
     "src/api/generated",
     "*.vsix",
-    ".vscode-test"
+    ".vscode-test",
+    "CHANGELOG.md"
   ]
 }
