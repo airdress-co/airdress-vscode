@@ -241,6 +241,77 @@ export function activate(context: vscode.ExtensionContext): void {
     principalsTree.refresh();
   }
 
+  /**
+   * Connect an Airdress. `pick` overrides the airdress quick-pick — the
+   * dev-mode `airdress.dev.connectAirdress(fqdn)` passes one that
+   * selects by FQDN, because a quick-pick is not reachable by command.
+   */
+  async function runConnect(
+    pick?: (entries: HubAirdress[]) => Promise<HubAirdress | undefined>,
+    trace?: string[],
+  ): Promise<void> {
+    await connectAirdress({
+      profiles,
+      signIn: (profileId) => auth.signInZitadel(profileId, callbackRouter),
+      getToken: (profileId) =>
+        auth.getAccessToken({ id: profileId, authMode: "zitadel" }),
+      discard: (profileId) => auth.signOut(profileId),
+      adopt: (fromId, toId) => auth.adoptCredential(fromId, toId),
+      hubUrl: () =>
+        vscode.workspace
+          .getConfiguration("airdress.hub")
+          .get<string>("url", "https://account.airdress.co"),
+      ui: {
+        pick:
+          (pick
+            ? async (entries: HubAirdress[]) => {
+                trace?.push(
+                  `entries: ${entries.map((e) => e.fqdn).join(", ")}`,
+                );
+                return pick(entries);
+              }
+            : undefined) ??
+          (async (entries: HubAirdress[]) => {
+            const picked = await vscode.window.showQuickPick(
+              entries.map((entry) => ({
+                label: entry.name,
+                description: entry.fqdn,
+                detail:
+                  entry.dnsStatus && entry.dnsStatus !== "active"
+                    ? `DNS status: ${entry.dnsStatus}`
+                    : undefined,
+                entry,
+              })),
+              { placeHolder: "Which Airdress should this profile connect to?" },
+            );
+            return picked?.entry;
+          }),
+        offerManualEntry: async (message) => {
+          trace?.push(`manual offered: ${message}`);
+          const choice = await vscode.window.showWarningMessage(
+            message,
+            "Add by hostname",
+          );
+          return choice === "Add by hostname";
+        },
+        addProfileManually: async () => {
+          await vscode.commands.executeCommand("airdress.profiles.add");
+        },
+        info: (message) => {
+          trace?.push(`info: ${message}`);
+          void vscode.window.showInformationMessage(message);
+        },
+        error: (message) => {
+          trace?.push(`error: ${message}`);
+          void vscode.window.showErrorMessage(message);
+        },
+        focusOperatorsView: async () => {
+          await vscode.commands.executeCommand("airdress.operators.focus");
+        },
+      },
+    });
+  }
+
   // Break-glass indicator: an OWNER session on an opaque bearer is a
   // break-glass session and renders loudly in the status bar, linking
   // to the recovery runbook. Shape only — never any part of the value.
@@ -357,52 +428,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // rejected token or unreachable hub it degrades EXPLICITLY to the
     // manual-hostname path — the message names the reason; nothing
     // falls back silently and no ambient default profile is created.
-    vscode.commands.registerCommand("airdress.connectAirdress", async () => {
-      await connectAirdress({
-        profiles,
-        signIn: (profileId) => auth.signInZitadel(profileId, callbackRouter),
-        getToken: (profileId) =>
-          auth.getAccessToken({ id: profileId, authMode: "zitadel" }),
-        discard: (profileId) => auth.signOut(profileId),
-        adopt: (fromId, toId) => auth.adoptCredential(fromId, toId),
-        hubUrl: () =>
-          vscode.workspace
-            .getConfiguration("airdress.hub")
-            .get<string>("url", "https://account.airdress.co"),
-        ui: {
-          pick: async (entries: HubAirdress[]) => {
-            const picked = await vscode.window.showQuickPick(
-              entries.map((entry) => ({
-                label: entry.name,
-                description: entry.fqdn,
-                detail:
-                  entry.dnsStatus && entry.dnsStatus !== "active"
-                    ? `DNS status: ${entry.dnsStatus}`
-                    : undefined,
-                entry,
-              })),
-              { placeHolder: "Which Airdress should this profile connect to?" },
-            );
-            return picked?.entry;
-          },
-          offerManualEntry: async (message) => {
-            const choice = await vscode.window.showWarningMessage(
-              message,
-              "Add by hostname",
-            );
-            return choice === "Add by hostname";
-          },
-          addProfileManually: async () => {
-            await vscode.commands.executeCommand("airdress.profiles.add");
-          },
-          info: (message) => void vscode.window.showInformationMessage(message),
-          error: (message) => void vscode.window.showErrorMessage(message),
-          focusOperatorsView: async () => {
-            await vscode.commands.executeCommand("airdress.operators.focus");
-          },
-        },
-      });
-    }),
+    vscode.commands.registerCommand("airdress.connectAirdress", () =>
+      runConnect(),
+    ),
 
     vscode.commands.registerCommand("airdress.profiles.pick", async () => {
       await pickProfile(profiles);
@@ -766,6 +794,21 @@ export function activate(context: vscode.ExtensionContext): void {
       // panel `airdress.resources.create` opens once they are answered.
       vscode.commands.registerCommand("airdress.dev.selectorState", () =>
         selector.state(),
+      ),
+      // Connect with the airdress pick answered by FQDN (the pick itself
+      // is VS Code chrome no command can accept). The browser sign-in
+      // still happens; only the list is pre-answered.
+      vscode.commands.registerCommand(
+        "airdress.dev.connectAirdress",
+        async (fqdn: string) => {
+          const trace: string[] = [];
+          await runConnect(
+            async (entries) =>
+              entries.find((e) => e.fqdn.toLowerCase() === fqdn.toLowerCase()),
+            trace,
+          );
+          return trace;
+        },
       ),
       vscode.commands.registerCommand(
         "airdress.dev.openPanel",
