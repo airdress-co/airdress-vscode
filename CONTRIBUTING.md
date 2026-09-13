@@ -42,6 +42,21 @@ Only if the Kind carries an affordance plain CRUD does not — the way
 entry in `src/webview/kinds.ts`. That table is deliberately closed and
 hand-written; three Kinds do not need a plugin system.
 
+## Which airdress a command acts on
+
+`profiles/picker.ts` `resolveProfile` is the one function every command
+goes through, and its policy is **explicit → active → pick**: a tree
+row or an argument wins; otherwise the active airdress (the one the
+Airdress view shows) is used without asking; only with nothing active
+does a quick-pick appear. The guard against writing to the wrong box
+is not that pick — it is the confirm in front of every write, which
+names the target by label AND FQDN. Those wordings live in
+`profiles/confirm.ts` as pure functions with one test each
+(`confirms.test.ts`); add any new write-guarding prompt there, and the
+test, before wiring it. One signed-in row per airdress: the store
+refuses a second ZITADEL profile for an FQDN it holds, and bearer
+profiles (sub-users) may sit beside it.
+
 ## Interactive: press F5
 
 Open this folder in VS Code and press **F5** ("Run Extension"). That
@@ -145,8 +160,10 @@ these are the walls, measured on 2026-09-12:
   after an apply included, so a `state` with a `resourceVersion` is the
   assertion. `answers` pre-answers the three modal prompts for that one
   message (`{apply: true}`, `{conflict: "reload"}`, `{delete: true}`);
-  leave one out and the modal shows as it would for a person. A release
-  build never registers either command.
+  leave one out and the modal shows as it would for a person.
+  `airdress.dev.selectorState()` returns what the Airdress view shows —
+  the assertion for "needs sign-in" or "reachable · 617 ms" without a
+  screenshot. A release build never registers any of the three.
 
 - **The sign-in wall cannot be driven on this OS.** The "open external
   website?" modal and the browser tab behind it are OS-drawn; nothing
