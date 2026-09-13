@@ -328,6 +328,7 @@ class FakeMemento implements vscode.Memento {
 
 interface FlowLog {
   discarded: string[];
+  adopted: Array<[string, string]>;
   manualOffered: string[];
   manualRan: number;
   errors: string[];
@@ -343,6 +344,7 @@ function flowHarness(overrides: {
   const store = new ProfileStore(new FakeMemento());
   const log: FlowLog = {
     discarded: [],
+    adopted: [],
     manualOffered: [],
     manualRan: 0,
     errors: [],
@@ -354,6 +356,9 @@ function flowHarness(overrides: {
     getToken: async () => "an-access-token",
     discard: async (id) => {
       log.discarded.push(id);
+    },
+    adopt: async (fromId, toId) => {
+      log.adopted.push([fromId, toId]);
     },
     hubUrl: () => "https://account.airdress.co",
     fetchFn: overrides.fetchFn,
@@ -446,6 +451,39 @@ suite("connect flow", () => {
     assert.strictEqual(store.activeId(), profiles[0].id);
     assert.strictEqual(log.focused, 1, "Operators view is focused");
     assert.strictEqual(log.discarded.length, 0, "credential stays bound");
+  });
+
+  test("connecting the same airdress twice refreshes the profile — never a twin row", async () => {
+    const body = [
+      {
+        id: "019e2b8c-2474-7671-a5da-6786ec715fd3",
+        name: "ada",
+        dns_status: "active",
+      },
+    ];
+    const { deps, store, log } = flowHarness({
+      fetchFn: (async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => body,
+        }) as unknown as Response) as typeof fetch,
+      pick: async (entries) => entries[0],
+    });
+    await connectAirdress(deps);
+    const [first] = store.list();
+    // The second connect is what a person does when the credential died:
+    // there is no other way back in. On 2026-09-13 it minted a twin.
+    await connectAirdress(deps);
+    const profiles = store.list();
+    assert.strictEqual(profiles.length, 1, "one profile per airdress");
+    assert.strictEqual(profiles[0].id, first.id, "the existing id survives");
+    assert.strictEqual(store.activeId(), first.id);
+    assert.strictEqual(log.adopted.length, 1, "the fresh credential moved");
+    assert.strictEqual(log.adopted[0][1], first.id);
+    assert.notStrictEqual(log.adopted[0][0], first.id, "from a candidate id");
+    assert.strictEqual(log.discarded.length, 0);
+    assert.strictEqual(log.focused, 2);
   });
 
   test("cancelling the picker discards the credential and creates nothing", async () => {

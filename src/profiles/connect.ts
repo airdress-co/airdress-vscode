@@ -252,6 +252,12 @@ export interface ConnectDeps {
   getToken: (profileId: string) => Promise<string | undefined>;
   /** Drop every credential stored under an abandoned candidate id. */
   discard: (profileId: string) => Promise<void>;
+  /**
+   * Move the credential minted under the candidate id onto an EXISTING
+   * profile for the same airdress, so a repeat sign-in refreshes that
+   * profile instead of minting a twin. Nothing remains under `fromId`.
+   */
+  adopt: (fromId: string, toId: string) => Promise<void>;
   hubUrl: () => string;
   fetchFn?: typeof fetch;
   ui: ConnectUI;
@@ -331,6 +337,33 @@ export async function connectAirdress(deps: ConnectDeps): Promise<void> {
   const picked = await deps.ui.pick(entries);
   if (!picked) {
     await deps.discard(candidateId);
+    return;
+  }
+
+  // The same airdress connected twice is a re-sign-in, not a second
+  // profile: the tree grew a twin row for op2 on 2026-09-13 because a
+  // burned refresh token had no other way back in. Adopt the fresh
+  // credential onto the profile that already names this FQDN.
+  const existing = deps.profiles
+    .list()
+    .find((p) => p.fqdn.toLowerCase() === picked.fqdn.toLowerCase());
+  if (existing) {
+    try {
+      await deps.adopt(candidateId, existing.id);
+    } catch (err) {
+      await deps.discard(candidateId);
+      deps.ui.error(
+        `Airdress: could not refresh the credential for ${existing.label} — ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return;
+    }
+    await deps.profiles.setActive(existing.id);
+    deps.ui.info(
+      `Airdress: signed in again to ${existing.label} (${existing.fqdn}).`,
+    );
+    await deps.ui.focusOperatorsView();
     return;
   }
 

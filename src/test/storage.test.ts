@@ -216,6 +216,42 @@ suite("AuthManager (T6-02)", () => {
     assert.strictEqual(exchanges, 1);
   });
 
+  test("adoptCredential moves a candidate's tokens onto an existing profile and leaves nothing behind", async () => {
+    const backing = new FakeSecretStorage();
+    const manager = new AuthManager(new SecretStore(backing), {
+      signInFn: async () =>
+        tokenSet({ accessToken: "access-new", refreshToken: "refresh-new" }),
+      refreshFn: async () => {
+        throw new Error("must not refresh: the adopted access token is live");
+      },
+      getConfig: () => cfg,
+    });
+    await backing.store("airdress.profile.p1.refresh", "refresh-dead");
+    await manager.signInZitadel("candidate", undefined as never);
+    await manager.adoptCredential("candidate", "p1");
+    assert.strictEqual(
+      await manager.getAccessToken({ id: "p1", authMode: "zitadel" }),
+      "access-new",
+    );
+    assert.strictEqual(
+      backing.stored.get("airdress.profile.p1.refresh"),
+      "refresh-new",
+    );
+    assert.strictEqual(
+      backing.stored.get("airdress.profile.candidate.refresh"),
+      undefined,
+      "the candidate id holds nothing",
+    );
+    assert.strictEqual(
+      await manager.hasCredential({ id: "candidate", authMode: "zitadel" }),
+      false,
+    );
+    await assert.rejects(
+      manager.adoptCredential("ghost", "p1"),
+      /no credential/,
+    );
+  });
+
   test("expired access token triggers exactly one silent refresh", async () => {
     const backing = new FakeSecretStorage();
     let refreshCalls = 0;
