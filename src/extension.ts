@@ -33,6 +33,7 @@ import {
   type PrincipalAdminDeps,
 } from "./principals/admin";
 import type { Profile } from "./profiles/model";
+import { deleteResourcePrompt } from "./profiles/confirm";
 import * as crypto from "node:crypto";
 import { HealthPoller } from "./health/poller";
 import { StatusCache } from "./health/statusCache";
@@ -65,6 +66,23 @@ export const callbackRouter = new CallbackRouter();
 export function activate(context: vscode.ExtensionContext): void {
   const profiles = new ProfileStore(context.globalState);
   const auth = new AuthManager(new SecretStore(context.secrets));
+  // One row per airdress. An older build minted a twin on every
+  // re-sign-in; collapse them once, keeping the row that can still
+  // reach the operator, and clear the losers' secrets.
+  void profiles
+    .dedupe(
+      (p) => auth.hasCredential({ id: p.id, authMode: p.authMode }),
+      (id) => auth.signOut(id),
+    )
+    .then((merged) => {
+      if (merged.length > 0) {
+        void vscode.window.showInformationMessage(
+          `Airdress: merged duplicate profiles for ${merged
+            .map((m) => m.kept.fqdn)
+            .join(", ")} — one row per airdress now.`,
+        );
+      }
+    });
   const statusBar = createStatusBar(profiles);
   const liveProvider = new LiveManifestProvider();
   const manifestDeps: ManifestDeps = {
@@ -589,10 +607,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const { kind, name } = node.resource;
         const typed = await vscode.window.showInputBox({
           title: `Delete ${kind}/${name}?`,
-          prompt:
-            `This removes ${kind}/${name} from ${node.profile.label} ` +
-            `(${node.profile.fqdn}). Files the resource named on the ` +
-            `operator's disk are not removed. Type the name to confirm.`,
+          prompt: deleteResourcePrompt(kind, name, node.profile),
           placeHolder: name,
           ignoreFocusOut: true,
           validateInput: (v) =>

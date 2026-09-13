@@ -7,11 +7,15 @@ import { isLocalhost, validateFqdn } from "./validate";
 /**
  * Profile selection UI.
  *
- * There is NO ambient default profile (NFR-8). Every command resolves
- * its target through {@link resolveProfile}: either the command was
- * invoked on something that names a profile (a tree node), or the user
- * picks one interactively — with the active profile pre-selected as a
- * convenience, never silently substituted.
+ * The ACTIVE profile is the standing target: a command acts on it
+ * without asking. That reverses the original NFR-8 ("no ambient
+ * default"), deliberately: the pick in front of every action was the
+ * guard only while the selection was a status-bar item nobody looked
+ * at. The selector view makes the selection something you always see,
+ * and every mutating confirm still names the target by label AND FQDN
+ * (`profiles/confirm.ts`, each wording under test). A command invoked
+ * on something that names a profile — a tree row, an argument — always
+ * wins over the active one. With nothing active, the pick returns.
  */
 
 /** The `airdress.dev.allowLocalhost` setting. */
@@ -21,28 +25,14 @@ export function devModeEnabled(): boolean {
     .get<boolean>("allowLocalhost", false);
 }
 
-/**
- * Resolve the profile a command should act on.
- *
- * - `explicit` (e.g. from a tree node's context) wins outright.
- * - Otherwise the user always picks. The active profile is only the
- *   pre-selected row — a command never silently inherits it.
- */
-export async function resolveProfile(
-  store: ProfileStore,
-  explicit?: Profile,
-): Promise<Profile | undefined> {
-  if (explicit) {
-    return explicit;
-  }
-  const profiles = store.list();
-  if (profiles.length === 0) {
-    void vscode.window.showInformationMessage(
-      "Airdress: no profiles yet — run “Airdress: Add Operator Profile” first.",
-    );
-    return undefined;
-  }
-  const activeId = store.activeId();
+/** How a profile is chosen when nothing else decides — injectable for tests. */
+export type ProfilePicker = (
+  profiles: Profile[],
+  activeId: string | undefined,
+) => Promise<Profile | undefined>;
+
+/** The quick-pick, with the active profile pre-selected. */
+export const quickPickProfile: ProfilePicker = async (profiles, activeId) => {
   const items = profiles.map((p) => ({
     label: p.label,
     description: p.fqdn + (p.dev ? " (dev)" : ""),
@@ -53,11 +43,51 @@ export async function resolveProfile(
     placeHolder: "Select the operator profile for this action",
   });
   return picked?.profile;
+};
+
+/**
+ * Resolve the profile a command should act on:
+ *
+ * 1. `explicit` (a tree row's context, an argument) wins outright.
+ * 2. Otherwise the ACTIVE profile, when the store still has it — no pick.
+ * 3. Otherwise the user picks (`pick`, the quick-pick by default).
+ */
+export async function resolveProfile(
+  store: ProfileStore,
+  explicit?: Profile,
+  pick: ProfilePicker = quickPickProfile,
+): Promise<Profile | undefined> {
+  if (explicit) {
+    return explicit;
+  }
+  const profiles = store.list();
+  if (profiles.length === 0) {
+    void vscode.window.showInformationMessage(
+      "Airdress: no profiles yet — run “Airdress: Connect an Airdress” first.",
+    );
+    return undefined;
+  }
+  const activeId = store.activeId();
+  const active = activeId ? profiles.find((p) => p.id === activeId) : undefined;
+  if (active) {
+    return active;
+  }
+  return pick(profiles, activeId);
 }
 
-/** Quick-pick switcher for the ACTIVE (status bar) profile. */
-export async function pickProfile(store: ProfileStore): Promise<void> {
-  const picked = await resolveProfile(store);
+/** Switch the ACTIVE profile: always a pick, never the current one. */
+export async function pickProfile(
+  store: ProfileStore,
+  pick: ProfilePicker = quickPickProfile,
+): Promise<void> {
+  const profiles = store.list();
+  if (profiles.length === 0) {
+    void vscode.window.showInformationMessage(
+      "Airdress: no profiles yet — run “Airdress: Connect an Airdress” first.",
+    );
+    return;
+  }
+  const picked = await pick(profiles, store.activeId());
   if (picked) {
     await store.setActive(picked.id);
   }
@@ -115,6 +145,18 @@ export async function addProfile(
   );
   if (!mode) {
     return undefined;
+  }
+
+  // The same airdress added twice is a re-sign-in of the row that
+  // exists, never a twin: the caller signs in under the returned id.
+  const existing =
+    mode.authMode === "zitadel" ? store.findByFqdn(fqdn) : undefined;
+  if (existing) {
+    void vscode.window.showInformationMessage(
+      `Airdress: a profile for ${fqdn} already exists ("${existing.label}") — signing in to it again.`,
+    );
+    await store.setActive(existing.id);
+    return existing;
   }
 
   const profile: Profile = {

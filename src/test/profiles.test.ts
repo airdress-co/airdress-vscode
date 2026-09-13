@@ -1,8 +1,8 @@
 import * as assert from "assert";
 import type * as vscode from "vscode";
 import { isLocalhost, validateFqdn } from "../profiles/validate";
-import { statusBarText } from "../profiles/picker";
-import { ProfileStore } from "../profiles/store";
+import { pickProfile, resolveProfile, statusBarText } from "../profiles/picker";
+import { DuplicateFqdnError, ProfileStore } from "../profiles/store";
 import type { Profile } from "../profiles/model";
 
 /**
@@ -174,5 +174,180 @@ suite("ProfileStore validation boundary (T6-03)", () => {
     await store.setActive("p1");
     await store.remove("p1");
     assert.strictEqual(store.activeId(), undefined);
+  });
+});
+
+function profile(id: string, fqdn: string, label = id): Profile {
+  return { id, label, fqdn, authMode: "zitadel", dev: false };
+}
+
+suite("resolveProfile: explicit → active → pick", () => {
+  test("an explicit profile wins, even over the active one", async () => {
+    const store = new ProfileStore(new FakeMemento());
+    const a = profile("a", "a.a.airdr.es");
+    const b = profile("b", "b.a.airdr.es");
+    await store.add(a);
+    await store.add(b);
+    await store.setActive(a.id);
+    let picks = 0;
+    const got = await resolveProfile(store, b, async () => {
+      picks += 1;
+      return a;
+    });
+    assert.strictEqual(got?.id, "b");
+    assert.strictEqual(picks, 0);
+  });
+
+  test("the active profile is the standing target — no pick", async () => {
+    const store = new ProfileStore(new FakeMemento());
+    const a = profile("a", "a.a.airdr.es");
+    const b = profile("b", "b.a.airdr.es");
+    await store.add(a);
+    await store.add(b);
+    await store.setActive(b.id);
+    let picks = 0;
+    const got = await resolveProfile(store, undefined, async () => {
+      picks += 1;
+      return a;
+    });
+    assert.strictEqual(got?.id, "b");
+    assert.strictEqual(picks, 0, "nothing asked while an airdress is active");
+  });
+
+  test("with nothing active the pick returns, pre-selecting nothing", async () => {
+    const store = new ProfileStore(new FakeMemento());
+    const a = profile("a", "a.a.airdr.es");
+    await store.add(a);
+    await store.setActive(undefined);
+    let seen: string | undefined = "unset";
+    const got = await resolveProfile(store, undefined, async (all, active) => {
+      seen = active;
+      return all[0];
+    });
+    assert.strictEqual(got?.id, "a");
+    assert.strictEqual(seen, undefined);
+  });
+
+  test("an active id whose row is gone falls back to the pick", async () => {
+    const store = new ProfileStore(new FakeMemento());
+    const a = profile("a", "a.a.airdr.es");
+    await store.add(a);
+    await store.setActive("ghost");
+    let picks = 0;
+    await resolveProfile(store, undefined, async (all) => {
+      picks += 1;
+      return all[0];
+    });
+    assert.strictEqual(picks, 1);
+  });
+
+  test("pickProfile always asks — switching is the one pick left", async () => {
+    const store = new ProfileStore(new FakeMemento());
+    const a = profile("a", "a.a.airdr.es");
+    const b = profile("b", "b.a.airdr.es");
+    await store.add(a);
+    await store.add(b);
+    await store.setActive(a.id);
+    await pickProfile(store, async (all, active) => {
+      assert.strictEqual(
+        active,
+        "a",
+        "the current one is offered as the pre-selection",
+      );
+      return all.find((p) => p.id === "b");
+    });
+    assert.strictEqual(store.activeId(), "b");
+  });
+});
+
+suite("one row per airdress", () => {
+  test("add refuses a second row for an FQDN the store holds, case-insensitively", async () => {
+    const store = new ProfileStore(new FakeMemento());
+    await store.add(profile("a", "019e2b8c.a.airdr.es"));
+    await assert.rejects(
+      store.add(profile("b", "019E2B8C.a.airdr.es")),
+      (err: unknown) =>
+        err instanceof DuplicateFqdnError && err.existing.id === "a",
+    );
+    assert.strictEqual(store.list().length, 1);
+    assert.strictEqual(store.findByFqdn("019e2b8c.A.AIRDR.ES")?.id, "a");
+  });
+
+  test("a bearer profile may share an FQDN with the signed-in one — it is another principal", async () => {
+    const store = new ProfileStore(new FakeMemento());
+    await store.add(profile("owner", "op2.a.airdr.es"));
+    await store.add({
+      ...profile("sub", "op2.a.airdr.es", "bob"),
+      authMode: "bearer",
+    });
+    await store.add({
+      ...profile("sub2", "op2.a.airdr.es", "carol"),
+      authMode: "bearer",
+    });
+    assert.strictEqual(store.list().length, 3);
+    assert.strictEqual(store.findByFqdn("op2.a.airdr.es")?.id, "owner");
+    const merged = await store.dedupe(
+      async () => true,
+      async () => {},
+    );
+    assert.strictEqual(merged.length, 0, "bearer rows never collapse");
+    assert.strictEqual(store.list().length, 3);
+  });
+
+  test("dedupe keeps the row with a credential, keeps its id, clears the losers, moves the active", async () => {
+    const memento = new FakeMemento();
+    // Seed twins straight into state, the way the old build left them.
+    await memento.update("airdress.profiles", [
+      profile("dead", "op2.a.airdr.es", "op2"),
+      profile("live", "op2.a.airdr.es", "op2"),
+      profile("other", "op1.a.airdr.es", "op1"),
+    ]);
+    await memento.update("airdress.activeProfileId", "dead");
+    const store = new ProfileStore(memento);
+    const cleared: string[] = [];
+    const merged = await store.dedupe(
+      async (p) => p.id === "live",
+      async (id) => {
+        cleared.push(id);
+      },
+    );
+    assert.deepStrictEqual(
+      store.list().map((p) => p.id),
+      ["live", "other"],
+    );
+    assert.strictEqual(store.activeId(), "live");
+    assert.deepStrictEqual(cleared, ["dead"]);
+    assert.strictEqual(merged.length, 1);
+    assert.strictEqual(merged[0].kept.id, "live");
+    // Idempotent: a second pass merges nothing and clears nothing.
+    const again = await store.dedupe(
+      async () => true,
+      async () => {
+        cleared.push("never");
+      },
+    );
+    assert.strictEqual(again.length, 0);
+    assert.deepStrictEqual(cleared, ["dead"]);
+  });
+
+  test("dedupe with no credentialed row keeps the active one, else the first", async () => {
+    const memento = new FakeMemento();
+    await memento.update("airdress.profiles", [
+      profile("x1", "x.a.airdr.es"),
+      profile("x2", "x.a.airdr.es"),
+      profile("y1", "y.a.airdr.es"),
+      profile("y2", "y.a.airdr.es"),
+    ]);
+    await memento.update("airdress.activeProfileId", "x2");
+    const store = new ProfileStore(memento);
+    await store.dedupe(
+      async () => false,
+      async () => {},
+    );
+    assert.deepStrictEqual(
+      store.list().map((p) => p.id),
+      ["x2", "y1"],
+    );
+    assert.strictEqual(store.activeId(), "x2");
   });
 });

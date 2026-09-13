@@ -13,6 +13,7 @@ import {
 import { applyManifest } from "../manifests/apply";
 import { ResourcePanelController, type ResourcePanelHost } from "./controller";
 import { hasFunctionExtras } from "./kinds";
+import { conflictMessage, deleteResourceConfirm } from "../profiles/confirm";
 import {
   functionRoute,
   parseResourceStatus,
@@ -257,7 +258,7 @@ export function liveHost(
         return answers.current.conflict ?? undefined;
       }
       const choice = await vscode.window.showWarningMessage(
-        `${kind}/${name} changed on ${profile.fqdn} since you opened it.`,
+        conflictMessage(kind, name, profile),
         {
           modal: true,
           detail:
@@ -281,7 +282,7 @@ export function liveHost(
         ? `${functionRoute(name)} stops answering immediately. The bundle file on the operator is not removed.`
         : `The reconciled effect of ${kind}/${name} is torn down. Files it named on the operator's disk are not removed.`;
       const choice = await vscode.window.showWarningMessage(
-        `Delete ${kind}/${name} from profile "${profile.label}" (${profile.fqdn})?`,
+        deleteResourceConfirm(kind, name, profile),
         { modal: true, detail },
         "Delete",
       );
