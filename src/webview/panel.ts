@@ -159,7 +159,7 @@ export function liveHost(
   const resourcePath = (name: string) =>
     `/v1/kinds/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`;
 
-  async function openAsYaml(yaml: string): Promise<void> {
+  async function openAsYaml(yaml: string): Promise<vscode.TextDocument> {
     const doc = await vscode.workspace.openTextDocument({
       language: "yaml",
       content: yaml,
@@ -168,6 +168,29 @@ export function liveHost(
       preview: false,
       viewColumn: vscode.ViewColumn.Beside,
     });
+    return doc;
+  }
+
+  /**
+   * Close the untitled document an apply was run on. The document is
+   * the panel's own rendering of the form, kept open only so the apply
+   * command has an editor to read and to pin a diagnostic on; once the
+   * operator has taken it there is nothing left to keep or discard, and
+   * three edits used to leave three "apiVersion: …" tabs beside the
+   * panel. A refused apply keeps its document — the diagnostic is on it.
+   */
+  async function closeDocument(doc: vscode.TextDocument): Promise<void> {
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const input = tab.input;
+        if (
+          input instanceof vscode.TabInputText &&
+          input.uri.toString() === doc.uri.toString()
+        ) {
+          await vscode.window.tabGroups.close(tab, true);
+        }
+      }
+    }
   }
 
   return {
@@ -186,7 +209,7 @@ export function liveHost(
     // showed "not found" for a create, and a 409 never reached the
     // controller's conflict handling at all. Seen on hardware.
     async applyYaml(yaml) {
-      await openAsYaml(yaml);
+      const doc = await openAsYaml(yaml);
       const outcome = await applyManifest(deps, profile, {
         confirm: answers.current?.apply,
       });
@@ -198,6 +221,7 @@ export function liveHost(
           cancelled: true,
         });
       }
+      await closeDocument(doc);
     },
     async diffYaml(yaml) {
       await openAsYaml(yaml);
