@@ -41,6 +41,8 @@ interface Deps {
 export class AuthManager {
   /** Access tokens — MEMORY ONLY, keyed by profile id (FR-22). */
   private readonly accessTokens = new Map<string, TokenSet>();
+  /** The one refresh exchange in flight per profile, if any. */
+  private readonly refreshing = new Map<string, Promise<string | undefined>>();
   private readonly deps: Deps;
 
   constructor(
@@ -94,7 +96,26 @@ export class AuthManager {
       return cached.accessToken;
     }
 
-    const refreshToken = await this.secrets.getRefreshToken(target.id);
+    // ONE refresh in flight per profile. After a window reload the three
+    // tree views and any open panel all ask at once, each finds no cached
+    // token, and each would spend the SAME refresh token. ZITADEL rotates
+    // refresh tokens on use, so only the first exchange can succeed and
+    // the rest fail as reuse — which, with the failure swallowed below,
+    // reads as "no credential" for a profile whose secret is still there.
+    // Measured 2026-09-13 on the dev host: signed in, three reloads, dead.
+    const inflight = this.refreshing.get(target.id);
+    if (inflight) {
+      return inflight;
+    }
+    const refresh = this.refreshOnce(target.id).finally(() => {
+      this.refreshing.delete(target.id);
+    });
+    this.refreshing.set(target.id, refresh);
+    return refresh;
+  }
+
+  private async refreshOnce(profileId: string): Promise<string | undefined> {
+    const refreshToken = await this.secrets.getRefreshToken(profileId);
     if (!refreshToken) {
       return undefined;
     }
@@ -106,9 +127,9 @@ export class AuthManager {
       // re-auth prompt per profile — never a request storm (design §9).
       return undefined;
     }
-    this.accessTokens.set(target.id, tokens);
+    this.accessTokens.set(profileId, tokens);
     if (tokens.refreshToken && tokens.refreshToken !== refreshToken) {
-      await this.secrets.setRefreshToken(target.id, tokens.refreshToken);
+      await this.secrets.setRefreshToken(profileId, tokens.refreshToken);
     }
     return tokens.accessToken;
   }

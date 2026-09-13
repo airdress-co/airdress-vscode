@@ -167,6 +167,55 @@ suite("AuthManager (T6-02)", () => {
     );
   });
 
+  test("concurrent callers after a restart share ONE refresh — a rotating issuer would kill the family otherwise", async () => {
+    const backing = new FakeSecretStorage();
+    const first = new AuthManager(new SecretStore(backing), {
+      signInFn: async () => tokenSet(),
+      getConfig: () => cfg,
+    });
+    await first.signInZitadel("p1", undefined as never);
+
+    // A rotating issuer: each refresh token is good for exactly one
+    // exchange, and spending it twice is reuse — refused. This is what
+    // three tree views and a panel did to a signed-in dev host on
+    // 2026-09-13, one window reload at a time.
+    const spent = new Set<string>();
+    let exchanges = 0;
+    const second = new AuthManager(new SecretStore(backing), {
+      refreshFn: async (_cfg, refreshToken) => {
+        exchanges += 1;
+        await new Promise((r) => setTimeout(r, 5));
+        if (spent.has(refreshToken)) {
+          throw new Error("invalid_grant: refresh token reused");
+        }
+        spent.add(refreshToken);
+        return tokenSet({ accessToken: "access-2", refreshToken: "refresh-2" });
+      },
+      getConfig: () => cfg,
+    });
+    const target = { id: "p1", authMode: "zitadel" as const };
+    const tokens = await Promise.all([
+      second.getAccessToken(target),
+      second.getAccessToken(target),
+      second.getAccessToken(target),
+      second.getAccessToken(target),
+    ]);
+    assert.deepStrictEqual(tokens, [
+      "access-2",
+      "access-2",
+      "access-2",
+      "access-2",
+    ]);
+    assert.strictEqual(exchanges, 1, "one exchange for four callers");
+    assert.strictEqual(
+      backing.stored.get("airdress.profile.p1.refresh"),
+      "refresh-2",
+    );
+    // And the next caller uses the cache, not another exchange.
+    assert.strictEqual(await second.getAccessToken(target), "access-2");
+    assert.strictEqual(exchanges, 1);
+  });
+
   test("expired access token triggers exactly one silent refresh", async () => {
     const backing = new FakeSecretStorage();
     let refreshCalls = 0;
