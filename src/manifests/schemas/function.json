@@ -104,6 +104,33 @@
                     "integer",
                     "null"
                   ]
+                },
+                "sign": {
+                  "description": "Sign every request this function makes to an allowed host with this operator's HTTP-signing key (RFC 9421). Granted by the owner only: a bundle cannot ask for it. Default false.",
+                  "type": "boolean"
+                },
+                "signWith": {
+                  "description": "Which signatures `sign` adds: `rfc9421` for operator-to-operator webhooks, `standard-webhooks-v1a` (Ed25519) for receivers that implement Standard Webhooks, or both. Omitted means rfc9421. Only meaningful with sign: true.",
+                  "items": {
+                    "description": "A signature scheme the host adds to each outbound request.",
+                    "oneOf": [
+                      {
+                        "description": "RFC 9421 HTTP Message Signatures, verified by a peer operator.",
+                        "enum": [
+                          "rfc9421"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "description": "Standard Webhooks v1a: an Ed25519 signature over the webhook id, timestamp and body.",
+                        "enum": [
+                          "standard-webhooks-v1a"
+                        ],
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "type": "array"
                 }
               },
               "type": [
@@ -265,5 +292,5 @@
   ],
   "title": "Airdress operator Function manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.64"
+  "x-airdress-operator-version": "v0.1.70"
 }
