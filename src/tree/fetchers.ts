@@ -133,6 +133,12 @@ export function decodeEnrollments(body: unknown): EnrollmentMeta[] {
       return {
         id: entry.id,
         createdAt: typeof entry.created_at === "string" ? entry.created_at : "",
+        ...(typeof entry.device_label === "string"
+          ? { deviceLabel: entry.device_label }
+          : {}),
+        ...(typeof entry.airdress === "string"
+          ? { airdress: entry.airdress }
+          : {}),
       };
     })
     .filter((e): e is EnrollmentMeta => e !== undefined);

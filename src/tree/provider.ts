@@ -180,6 +180,18 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
         );
         item.description = node.enrollment.createdAt;
         item.iconPath = new vscode.ThemeIcon("device-mobile");
+        item.contextValue = "airdressEnrollment";
+        item.tooltip = [
+          node.enrollment.deviceLabel
+            ? `label: ${node.enrollment.deviceLabel}`
+            : undefined,
+          node.enrollment.airdress
+            ? `airdress: ${node.enrollment.airdress}`
+            : undefined,
+          `created: ${node.enrollment.createdAt}`,
+        ]
+          .filter(Boolean)
+          .join("\n");
         return item;
       }
       case "health": {

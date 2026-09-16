@@ -82,8 +82,32 @@ suite("enrollments decoding", () => {
       {
         id: "b7c1c9c2-0000-0000-0000-000000000001",
         createdAt: "2026-09-01T00:00:00Z",
+        deviceLabel: "pixel-9",
       },
     ]);
+  });
+
+  test("an item's `airdress` is carried when the operator sends it", () => {
+    assert.deepStrictEqual(
+      decodeEnrollments({
+        enrollments: [
+          {
+            id: "e1",
+            created_at: "2026-09-01T00:00:00Z",
+            device_label: "dead phone",
+            airdress: "ada.a.airdr.es",
+          },
+        ],
+      }),
+      [
+        {
+          id: "e1",
+          createdAt: "2026-09-01T00:00:00Z",
+          deviceLabel: "dead phone",
+          airdress: "ada.a.airdr.es",
+        },
+      ],
+    );
   });
 
   test("contract body: `items` key", () => {
