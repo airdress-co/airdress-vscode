@@ -131,12 +131,68 @@
                     "properties": {
                       "secretRef": {
                         "description": "The name of a secret held by this operator.",
-                        "type": "string"
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "token": {
+                        "additionalProperties": false,
+                        "description": "A short-lived token this operator mints at each fire, scoped to one action on one resource. Nothing is stored: a peer that trusts this operator's public key verifies it.",
+                        "properties": {
+                          "action": {
+                            "description": "The one action the token carries.",
+                            "oneOf": [
+                              {
+                                "description": "Create or replace the resource.",
+                                "enum": [
+                                  "Apply"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "description": "Read the resource.",
+                                "enum": [
+                                  "Get"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "description": "Delete the resource.",
+                                "enum": [
+                                  "Delete"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "description": "Read the resource's status.",
+                                "enum": [
+                                  "ReadStatus"
+                                ],
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "resource": {
+                            "description": "The one resource the token is good for, as Kind::name — for example Function::relay-to-op2.",
+                            "type": "string"
+                          },
+                          "ttl": {
+                            "description": "How long each minted token lives, as a number then s, m or h — at most 1h. Keep it near the schedule's interval: a token outliving its fire is only more to lose.",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "resource",
+                          "ttl"
+                        ],
+                        "type": [
+                          "object",
+                          "null"
+                        ]
                       }
                     },
-                    "required": [
-                      "secretRef"
-                    ],
                     "type": [
                       "object",
                       "null"
@@ -212,5 +268,5 @@
   ],
   "title": "Airdress operator Schedule manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.64"
+  "x-airdress-operator-version": "v0.1.70"
 }
