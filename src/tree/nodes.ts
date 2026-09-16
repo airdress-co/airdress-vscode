@@ -43,10 +43,14 @@ export interface PrincipalMeta extends ForbiddenContentFields {
   readonly revokedAt?: string;
 }
 
-/** An enrollment row (id + timestamp — nothing sensitive). */
+/** An enrollment row (id, timestamp, label — nothing sensitive). */
 export interface EnrollmentMeta {
   readonly id: string;
   readonly createdAt: string;
+  /** `device_label`, when the operator sends one. */
+  readonly deviceLabel?: string;
+  /** The enrollment's `airdress`, when the operator sends one. */
+  readonly airdress?: string;
 }
 
 /** A resource row within a kind. */

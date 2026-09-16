@@ -77,6 +77,15 @@ export function bindIdentityPrompt(
   );
 }
 
+/** Enrollments: revoke one device's enrollment. */
+export function revokeEnrollmentConfirm(
+  enrollment: { id: string; deviceLabel?: string; airdress?: string },
+  profile: Pick<Profile, "label" | "fqdn">,
+): string {
+  const label = enrollment.deviceLabel ? ` '${enrollment.deviceLabel}'` : "";
+  return `Revoke enrollment${label} (${enrollment.id}) on ${targetPhrase(profile)}?`;
+}
+
 /** Whether a prompt names its target the way this module promises. */
 export function namesTarget(
   text: string,

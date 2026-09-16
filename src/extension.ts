@@ -16,6 +16,11 @@ import {
   classifyBearer,
 } from "./auth/breakGlass";
 import { runbookUrl } from "./principals/admin";
+import {
+  defaultEnrollmentRevokeUI,
+  revokeEnrollment,
+  type EnrollmentRevokeDeps,
+} from "./enrollments/revoke";
 import { addOpenFileToMapping, detectWorkspaceDrift } from "./drift/commands";
 import { AIRDRESS_SCHEME, LiveManifestProvider } from "./manifests/virtual";
 import { diffAgainstLive, type ManifestDeps } from "./manifests/diff";
@@ -223,6 +228,12 @@ export function activate(context: vscode.ExtensionContext): void {
       principalsTree.refresh();
       operatorsTree.refresh();
     },
+  };
+
+  const enrollmentRevokeDeps: EnrollmentRevokeDeps = {
+    manifest: manifestDeps,
+    ui: defaultEnrollmentRevokeUI,
+    refreshResources: () => resourcesTree.refresh(),
   };
 
   function activeProfile(): Profile | undefined {
@@ -605,6 +616,15 @@ export function activate(context: vscode.ExtensionContext): void {
       "airdress.principals.revoke",
       async (node: TreeNodeData) => {
         await revokeSubUser(adminDeps, node);
+      },
+    ),
+
+    // Enrollment revoke: offered on every Enrollments row; whether this
+    // sign-in may revoke that device is the operator's decision.
+    vscode.commands.registerCommand(
+      "airdress.enrollments.revoke",
+      async (node: TreeNodeData) => {
+        await revokeEnrollment(enrollmentRevokeDeps, node);
       },
     ),
 

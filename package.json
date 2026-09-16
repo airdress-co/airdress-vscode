@@ -87,6 +87,10 @@
         "title": "Airdress: Attach Identity to Sub-User"
       },
       {
+        "command": "airdress.enrollments.revoke",
+        "title": "Airdress: Revoke Enrollment…"
+      },
+      {
         "command": "airdress.breakGlass.openRunbook",
         "title": "Airdress: Open Owner-Token Recovery Runbook"
       },
@@ -192,6 +196,10 @@
           "when": "false"
         },
         {
+          "command": "airdress.enrollments.revoke",
+          "when": "false"
+        },
+        {
           "command": "airdress.functions.configure",
           "when": "false"
         },
@@ -240,6 +248,11 @@
         {
           "command": "airdress.principals.revoke",
           "when": "view == airdress.principals && viewItem == airdressPrincipal",
+          "group": "9_destructive@1"
+        },
+        {
+          "command": "airdress.enrollments.revoke",
+          "when": "view == airdress.resources && viewItem == airdressEnrollment",
           "group": "9_destructive@1"
         },
         {

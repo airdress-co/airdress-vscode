@@ -6,6 +6,7 @@ import {
   deleteResourceConfirm,
   deleteResourcePrompt,
   namesTarget,
+  revokeEnrollmentConfirm,
   revokeSubUserTitle,
   targetPhrase,
 } from "../profiles/confirm";
@@ -59,6 +60,13 @@ suite("every write-guarding prompt names its target", () => {
     ],
     ["create sub-user", createSubUserConfirm("bob", PROFILE)],
     ["revoke sub-user (title)", revokeSubUserTitle("bob", PROFILE)],
+    [
+      "revoke enrollment",
+      revokeEnrollmentConfirm(
+        { id: "e1", deviceLabel: "dead phone", airdress: "ada.a.airdr.es" },
+        PROFILE,
+      ),
+    ],
     [
       "attach identity",
       bindIdentityPrompt("https://issuer.test", "bob", PROFILE),
