@@ -14,6 +14,18 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.5.0](https://github.com/airdress-co/airdress-vscode/compare/v0.4.0...v0.5.0) (2026-09-16)
+
+
+### Features
+
+* **tree:** revoke an enrollment from the Enrollments node ([4cdbd79](https://github.com/airdress-co/airdress-vscode/commit/4cdbd797ca8ade0e2896fa22740a65a776e9718f))
+
+
+### Bug Fixes
+
+* **tree:** an empty enrollments listing says so instead of expanding to nothing ([42fbf7c](https://github.com/airdress-co/airdress-vscode/commit/42fbf7c23ef46d978547c19e20bf9faeedac7165))
+
 ## [0.4.0](https://github.com/airdress-co/airdress-vscode/compare/v0.3.0...v0.4.0) (2026-09-13)
 
 
