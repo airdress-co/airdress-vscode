@@ -94,7 +94,12 @@ export type TreeNodeData =
     }
   | { type: "principal"; profile: Profile; principal: PrincipalMeta }
   | { type: "enrollment"; profile: Profile; enrollment: EnrollmentMeta }
-  | { type: "message"; text: string };
+  | {
+      type: "message";
+      text: string;
+      /** Codicon name; defaults to "warning". */
+      icon?: string;
+    };
 
 /**
  * Data the tree needs from the operator, injectable for tests.

@@ -153,6 +153,42 @@ suite("resources view (active profile scoped)", () => {
     assert.strictEqual(item.command?.command, "airdress.resources.open");
   });
 
+  test("an empty enrollments listing renders a sentence, not an empty expanded node", async () => {
+    const provider = new ResourcesTreeProvider(
+      await storeWith(OWNER_PROFILE),
+      fetchers({ listEnrollments: async () => [] }),
+    );
+    const roots = await provider.getChildren();
+    const section = roots.find(
+      (r) => r.type === "section" && r.section === "enrollments",
+    );
+    assert.ok(section);
+    const children = await provider.getChildren(section);
+    assert.strictEqual(children.length, 1);
+    const [only] = children;
+    assert.ok(only.type === "message");
+    assert.match(only.text, /No active enrollments/);
+    const item = provider.getTreeItem(only);
+    assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, "info");
+  });
+
+  test("a non-empty enrollments listing renders one row per enrollment", async () => {
+    const provider = new ResourcesTreeProvider(
+      await storeWith(OWNER_PROFILE),
+      fetchers(),
+    );
+    const roots = await provider.getChildren();
+    const section = roots.find(
+      (r) => r.type === "section" && r.section === "enrollments",
+    );
+    assert.ok(section);
+    const children = await provider.getChildren(section);
+    assert.deepStrictEqual(
+      children.map((c) => c.type),
+      ["enrollment"],
+    );
+  });
+
   test("Function rows carry a kind-specific context value; other kinds keep the generic one", async () => {
     const provider = new ResourcesTreeProvider(
       await storeWith(OWNER_PROFILE),

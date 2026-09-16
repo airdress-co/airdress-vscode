@@ -198,7 +198,7 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
           node.text,
           vscode.TreeItemCollapsibleState.None,
         );
-        item.iconPath = new vscode.ThemeIcon("warning");
+        item.iconPath = new vscode.ThemeIcon(node.icon ?? "warning");
         return item;
       }
     }
@@ -388,6 +388,20 @@ export class ResourcesTreeProvider extends BaseTreeProvider {
             return [];
           }
           const enrollments = await this.fetchers.listEnrollments(node.profile);
+          if (enrollments.length === 0) {
+            // An expanded node with no children reads as "still loading"
+            // or "broken". Say what the operator actually answered. The
+            // listing is scoped by the operator (active rows only, and by
+            // whom it takes the caller to be), so the sentence claims no
+            // more than "none visible to this sign-in".
+            return [
+              {
+                type: "message",
+                icon: "info",
+                text: "No active enrollments visible to this sign-in.",
+              },
+            ];
+          }
           return enrollments.map((enrollment) => ({
             type: "enrollment",
             profile: node.profile,
