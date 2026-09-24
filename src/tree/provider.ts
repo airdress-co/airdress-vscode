@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { identityText } from "../auth/identity";
 import { ProfileStore } from "../profiles/store";
 import { bundledSchemas } from "../manifests/schemas";
 import {
@@ -88,7 +89,12 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
           node.signedIn === false
             ? "No credential stored — sign in first"
             : node.signedIn
-              ? "Signed in"
+              ? // Which ACCOUNT, not just "signed in": with several
+                // accounts in play, the useful fact is whose credential
+                // this row carries.
+                node.profile.account
+                ? `Signed in as ${identityText(node.profile.account)}`
+                : "Signed in"
               : undefined,
         ]
           .filter(Boolean)

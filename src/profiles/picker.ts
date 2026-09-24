@@ -1,5 +1,6 @@
 import * as crypto from "node:crypto";
 import * as vscode from "vscode";
+import { identityText } from "../auth/identity";
 import { Profile } from "./model";
 import { ProfileStore } from "./store";
 import { isLocalhost, validateFqdn } from "./validate";
@@ -197,7 +198,15 @@ export function createStatusBar(store: ProfileStore): {
     const profile = active ? store.get(active) : undefined;
     item.text = statusBarText(profile);
     item.tooltip = profile
-      ? `${profile.fqdn}${profile.dev ? " — development profile (localhost allowed)" : ""}`
+      ? [
+          profile.fqdn,
+          profile.account
+            ? `Signed in as ${identityText(profile.account)}`
+            : undefined,
+          profile.dev ? "Development profile (localhost allowed)" : undefined,
+        ]
+          .filter(Boolean)
+          .join("\n")
       : "Select an Airdress operator profile";
     item.show();
   };

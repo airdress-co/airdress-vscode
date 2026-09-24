@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import type { AccountIdentity } from "../auth/identity";
 import { Profile } from "./model";
 import { validateFqdn } from "./validate";
 
@@ -163,6 +164,25 @@ export class ProfileStore {
     }
     this.emitter.fire();
     return merged;
+  }
+
+  /**
+   * Record (or correct) which account a profile is signed in as.
+   *
+   * Idempotent, and a no-op for an unknown id. Only ever called with an
+   * identity that a sign-in returned for THIS profile — the binding is
+   * a fact about the credential, never a guess.
+   */
+  async setAccount(id: string, account: AccountIdentity): Promise<void> {
+    const rows = this.list();
+    if (!rows.some((p) => p.id === id)) {
+      return;
+    }
+    await this.state.update(
+      STATE_KEY,
+      rows.map((p) => (p.id === id ? { ...p, account } : p)),
+    );
+    this.emitter.fire();
   }
 
   async remove(id: string): Promise<void> {
