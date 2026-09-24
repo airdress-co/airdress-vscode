@@ -1,4 +1,5 @@
 import type { AuthMode } from "../profiles/model";
+import { AccountMismatchError, type AccountIdentity } from "./identity";
 import { SecretStore } from "./store";
 import {
   AuthConfig,
@@ -6,6 +7,7 @@ import {
   getAuthConfig,
   refresh as refreshGrant,
   signIn as zitadelSignIn,
+  type SignInOptions,
   TokenSet,
 } from "./zitadel";
 
@@ -81,8 +83,9 @@ export class AuthManager {
   async signInZitadel(
     profileId: string,
     router: CallbackRouter,
+    options: SignInOptions = {},
   ): Promise<void> {
-    const tokens = await this.deps.signInFn(router);
+    const tokens = await this.deps.signInFn(router, options);
     this.accessTokens.set(profileId, tokens);
     if (tokens.refreshToken) {
       await this.secrets.setRefreshToken(profileId, tokens.refreshToken);
@@ -99,6 +102,15 @@ export class AuthManager {
   } {
     this.listeners.add(listener);
     return { dispose: () => this.listeners.delete(listener) };
+  }
+
+  /**
+   * The account the profile's current in-memory credential belongs to,
+   * or undefined when there is none or the response carried no id
+   * token. Callers persist it onto the profile as the binding.
+   */
+  identityFor(profileId: string): AccountIdentity | undefined {
+    return this.accessTokens.get(profileId)?.identity;
   }
 
   /** The last reported outcome for a profile; `unknown` until one is. */
@@ -212,11 +224,23 @@ export class AuthManager {
    * token died. The access token moves in memory, the refresh token in
    * SecretStorage; nothing stays under `fromId`.
    */
-  async adoptCredential(fromId: string, toId: string): Promise<void> {
+  async adoptCredential(
+    fromId: string,
+    toId: string,
+    expected?: AccountIdentity,
+  ): Promise<void> {
     const tokens = this.accessTokens.get(fromId);
     const refreshToken = await this.secrets.getRefreshToken(fromId);
     if (!tokens && !refreshToken) {
       throw new Error("no credential to adopt");
+    }
+    // A profile bound to an account takes credentials for THAT account
+    // and no other. `prompt` asks the provider to show a chooser; what
+    // comes back is whatever was picked there, or whatever session the
+    // browser already held. This is the check that makes the binding
+    // real, and it happens before anything is written.
+    if (expected && tokens?.identity && tokens.identity.sub !== expected.sub) {
+      throw new AccountMismatchError(expected, tokens.identity);
     }
     this.accessTokens.delete(toId);
     this.refreshing.delete(toId);

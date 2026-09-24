@@ -57,6 +57,37 @@ test, before wiring it. One signed-in row per airdress: the store
 refuses a second ZITADEL profile for an FQDN it holds, and bearer
 profiles (sub-users) may sit beside it.
 
+## Which account a sign-in uses
+
+A person can hold more than one account, and the browser that runs the
+sign-in holds sessions this extension cannot see. So every flow states
+what it is asking for, and the answer is checked rather than assumed.
+
+| Flow                                      | `prompt`                | Why                                                                                                                                                                                    |
+| ----------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connect an Airdress, Add Operator Profile | `select_account`        | These CHOOSE an account. Sent even when the extension knows of only one — its ignorance says nothing about the browser's sessions.                                                     |
+| Sign In Again                             | none, with `login_hint` | Re-acquiring a credential for an account the profile is already bound to. The usual case is the same person whose refresh token died; a chooser every time is the thing being avoided. |
+| Sign In Again, after a mismatch           | `select_account`        | Offered as an action on the error, so a wrong session is recoverable instead of a dead end.                                                                                            |
+| anything                                  | never `none`            | A client that can ask for a silent authentication can probe for one. The type does not admit it.                                                                                       |
+
+**The prompt is a request, not a guarantee.** What makes the binding
+real is that `Profile.account` records the subject at sign-in and
+`adoptCredential` refuses a credential for a different one — before
+anything is written. Adding a flow means deciding which row above it
+sits in, and passing the profile's binding to the adoption.
+
+Two things that follow, and are easy to get wrong:
+
+- **An absent binding is not a wildcard.** A profile from before
+  bindings existed has nothing to compare, so it adopts and the
+  identity is recorded — which is what makes the NEXT sign-in checked.
+- **A response with no identity never overwrites a binding.** Silence
+  is not proof of who this is.
+
+The subject is compared; the label (`preferred_username`, else `email`,
+else `name`) is only ever displayed, because it can change under the
+same subject.
+
 ## Interactive: press F5
 
 Open this folder in VS Code and press **F5** ("Run Extension"). That

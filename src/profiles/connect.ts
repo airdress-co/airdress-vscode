@@ -1,4 +1,6 @@
 import * as crypto from "node:crypto";
+import type { AccountIdentity } from "../auth/identity";
+import { identityText } from "../auth/identity";
 import type { Profile } from "./model";
 import type { ProfileStore } from "./store";
 import { validateFqdn } from "./validate";
@@ -257,7 +259,13 @@ export interface ConnectDeps {
    * profile for the same airdress, so a repeat sign-in refreshes that
    * profile instead of minting a twin. Nothing remains under `fromId`.
    */
-  adopt: (fromId: string, toId: string) => Promise<void>;
+  adopt: (
+    fromId: string,
+    toId: string,
+    expected?: AccountIdentity,
+  ) => Promise<void>;
+  /** Which account the candidate sign-in returned, if it said. */
+  identityOf: (profileId: string) => AccountIdentity | undefined;
   hubUrl: () => string;
   fetchFn?: typeof fetch;
   ui: ConnectUI;
@@ -347,9 +355,13 @@ export async function connectAirdress(deps: ConnectDeps): Promise<void> {
   const existing = deps.profiles
     .list()
     .find((p) => p.fqdn.toLowerCase() === picked.fqdn.toLowerCase());
+  const identity = deps.identityOf(candidateId);
   if (existing) {
     try {
-      await deps.adopt(candidateId, existing.id);
+      // The chooser ran, so a DIFFERENT account may have been picked.
+      // Adopting refuses that outright rather than quietly moving the
+      // profile to whoever signed in last.
+      await deps.adopt(candidateId, existing.id, existing.account);
     } catch (err) {
       await deps.discard(candidateId);
       deps.ui.error(
@@ -359,9 +371,13 @@ export async function connectAirdress(deps: ConnectDeps): Promise<void> {
       );
       return;
     }
+    if (identity) {
+      await deps.profiles.setAccount(existing.id, identity);
+    }
     await deps.profiles.setActive(existing.id);
     deps.ui.info(
-      `Airdress: signed in again to ${existing.label} (${existing.fqdn}).`,
+      `Airdress: signed in again to ${existing.label} (${existing.fqdn}) as ` +
+        `${identityText(identity ?? existing.account)}.`,
     );
     await deps.ui.focusOperatorsView();
     return;
@@ -373,6 +389,7 @@ export async function connectAirdress(deps: ConnectDeps): Promise<void> {
     fqdn: picked.fqdn,
     authMode: "zitadel",
     dev: false,
+    account: identity,
   };
   try {
     await deps.profiles.add(profile, { allowLocalhost: false });
@@ -386,6 +403,9 @@ export async function connectAirdress(deps: ConnectDeps): Promise<void> {
     return;
   }
   await deps.profiles.setActive(profile.id);
-  deps.ui.info(`Airdress: connected ${picked.name} (${picked.fqdn}).`);
+  deps.ui.info(
+    `Airdress: connected ${picked.name} (${picked.fqdn}) as ` +
+      `${identityText(identity)}.`,
+  );
   await deps.ui.focusOperatorsView();
 }

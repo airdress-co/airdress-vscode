@@ -1,6 +1,7 @@
 import * as http from "node:http";
 import * as vscode from "vscode";
 import { challengeS256, generateState, generateVerifier } from "./pkce";
+import { identityFromIdToken, type AccountIdentity } from "./identity";
 
 /**
  * ZITADEL OIDC authorization-code + PKCE flow.
@@ -37,6 +38,37 @@ export interface TokenSet {
   refreshToken?: string;
   /** Epoch milliseconds at which accessToken expires. */
   expiresAt: number;
+  /**
+   * Which account this credential belongs to, read from the id token.
+   * Absent when the response carried none — never guessed.
+   */
+  identity?: AccountIdentity;
+}
+
+/**
+ * How a sign-in asks the identity provider which account to use.
+ *
+ * The values are the OIDC Core §3.1.2.1 ones this extension is willing
+ * to send, and the choice is per flow, not per taste:
+ *
+ * - `select_account` — "which of your accounts is this?". Every flow
+ *   that ADDS or CHOOSES an account sends it, including when this
+ *   extension knows of only one: the browser running the sign-in holds
+ *   sessions the extension cannot see, and without it the provider
+ *   hands back whoever is already signed in there, silently.
+ * - `login` — "prove it's you, now". For re-authenticating a known
+ *   identity as a security step, not for picking one.
+ * - omitted — only when re-acquiring a credential for an identity the
+ *   profile is already bound to, where `login_hint` names the expected
+ *   account and the returned subject is CHECKED against the binding.
+ *
+ * `none` is deliberately absent: a client that can ask for a silent
+ * authentication can probe for one.
+ */
+export interface SignInOptions {
+  prompt?: "select_account" | "login";
+  /** The account the caller expects, so the provider can pre-fill it. */
+  loginHint?: string;
 }
 
 export interface AuthConfig {
@@ -90,6 +122,7 @@ export function buildAuthorizeUrl(
   redirectUri: string,
   state: string,
   codeChallenge: string,
+  options: SignInOptions = {},
 ): string {
   const url = cfg.authorizeBase
     ? new URL(cfg.authorizeBase)
@@ -101,6 +134,12 @@ export function buildAuthorizeUrl(
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", codeChallenge);
   url.searchParams.set("code_challenge_method", "S256");
+  if (options.prompt) {
+    url.searchParams.set("prompt", options.prompt);
+  }
+  if (options.loginHint) {
+    url.searchParams.set("login_hint", options.loginHint);
+  }
   return url.toString();
 }
 
@@ -225,6 +264,7 @@ export class UriHandlerTimeoutError extends Error {
 interface TokenEndpointResponse {
   access_token?: string;
   refresh_token?: string;
+  id_token?: string;
   expires_in?: number;
   error?: string;
   error_description?: string;
@@ -261,6 +301,7 @@ async function postTokenEndpoint(
     accessToken: payload.access_token,
     refreshToken: payload.refresh_token,
     expiresAt: Date.now() + (payload.expires_in ?? 300) * 1000,
+    identity: identityFromIdToken(payload.id_token),
   };
 }
 
@@ -309,7 +350,10 @@ const LOOPBACK_RESPONSE_HTML =
  * RFC 8252 §7.3 loopback flow: ephemeral listener on 127.0.0.1, any port.
  * ZITADEL accepts loopback redirects for native clients regardless of port.
  */
-async function signInViaLoopback(cfg: AuthConfig): Promise<TokenSet> {
+async function signInViaLoopback(
+  cfg: AuthConfig,
+  options: SignInOptions,
+): Promise<TokenSet> {
   const verifier = generateVerifier();
   const state = generateState();
 
@@ -349,6 +393,7 @@ async function signInViaLoopback(cfg: AuthConfig): Promise<TokenSet> {
       redirectUri,
       state,
       challengeS256(verifier),
+      options,
     );
     await vscode.env.openExternal(vscode.Uri.parse(authorizeUrl));
 
@@ -364,6 +409,7 @@ async function signInViaLoopback(cfg: AuthConfig): Promise<TokenSet> {
 async function signInViaUriHandler(
   cfg: AuthConfig,
   router: CallbackRouter,
+  options: SignInOptions,
 ): Promise<TokenSet> {
   const verifier = generateVerifier();
   const state = generateState();
@@ -379,6 +425,7 @@ async function signInViaUriHandler(
     redirectUri,
     state,
     challengeS256(verifier),
+    options,
   );
   await vscode.env.openExternal(vscode.Uri.parse(authorizeUrl));
 
@@ -415,14 +462,17 @@ export function selectRoute(
  * known scheme whose handler never fires gets an explicit loopback
  * retry offer rather than a silent hang.
  */
-export async function signIn(router: CallbackRouter): Promise<TokenSet> {
+export async function signIn(
+  router: CallbackRouter,
+  options: SignInOptions = {},
+): Promise<TokenSet> {
   const cfg = getAuthConfig();
 
   const route = vscode.workspace
     .getConfiguration("airdress.auth")
     .get<string>("route", "auto");
   if (selectRoute(route, vscode.env.uriScheme) === "loopback") {
-    return signInViaLoopback(cfg);
+    return signInViaLoopback(cfg, options);
   }
 
   // asExternalUri as an environment PROBE only: when it rewrites the
@@ -433,11 +483,11 @@ export async function signIn(router: CallbackRouter): Promise<TokenSet> {
     vscode.Uri.parse(registeredRedirectUri(vscode.env.uriScheme)),
   );
   if (!externalUriTargetsUriHandler(probe, vscode.env.uriScheme)) {
-    return signInViaLoopback(cfg);
+    return signInViaLoopback(cfg, options);
   }
 
   try {
-    return await signInViaUriHandler(cfg, router);
+    return await signInViaUriHandler(cfg, router, options);
   } catch (err) {
     if (err instanceof UriHandlerTimeoutError) {
       const retry = await vscode.window.showWarningMessage(
@@ -445,7 +495,7 @@ export async function signIn(router: CallbackRouter): Promise<TokenSet> {
         "Retry via loopback",
       );
       if (retry === "Retry via loopback") {
-        return signInViaLoopback(cfg);
+        return signInViaLoopback(cfg, options);
       }
     }
     throw err;

@@ -17,6 +17,7 @@ import {
   type HubPage,
 } from "../profiles/connect";
 import { ProfileStore } from "../profiles/store";
+import type { AccountIdentity } from "../auth/identity";
 
 /** First-contact UX: contributions, hub parsing, explicit degradation. */
 
@@ -329,6 +330,8 @@ class FakeMemento implements vscode.Memento {
 interface FlowLog {
   discarded: string[];
   adopted: Array<[string, string]>;
+  /** The binding each adoption was asked to honour. */
+  adoptExpected: Array<string | undefined>;
   manualOffered: string[];
   manualRan: number;
   errors: string[];
@@ -340,11 +343,16 @@ function flowHarness(overrides: {
   signIn?: (id: string) => Promise<void>;
   pick?: ConnectUI["pick"];
   acceptManual?: boolean;
+  /** What the candidate sign-in "returned" as its account. */
+  identity?: AccountIdentity;
+  /** Make adoption fail the way a mismatched account does. */
+  adopt?: ConnectDeps["adopt"];
 }): { deps: ConnectDeps; store: ProfileStore; log: FlowLog } {
   const store = new ProfileStore(new FakeMemento());
   const log: FlowLog = {
     discarded: [],
     adopted: [],
+    adoptExpected: [],
     manualOffered: [],
     manualRan: 0,
     errors: [],
@@ -357,9 +365,13 @@ function flowHarness(overrides: {
     discard: async (id) => {
       log.discarded.push(id);
     },
-    adopt: async (fromId, toId) => {
-      log.adopted.push([fromId, toId]);
-    },
+    adopt:
+      overrides.adopt ??
+      (async (fromId, toId, expected) => {
+        log.adopted.push([fromId, toId]);
+        log.adoptExpected.push(expected?.sub);
+      }),
+    identityOf: () => overrides.identity,
     hubUrl: () => "https://account.airdress.co",
     fetchFn: overrides.fetchFn,
     ui: {
@@ -484,6 +496,93 @@ suite("connect flow", () => {
     assert.notStrictEqual(log.adopted[0][0], first.id, "from a candidate id");
     assert.strictEqual(log.discarded.length, 0);
     assert.strictEqual(log.focused, 2);
+  });
+
+  test("the account the sign-in returned is recorded on the profile", async () => {
+    const body = [
+      {
+        id: "00000000-0000-4000-8000-000000000001",
+        name: "example",
+        dns_status: "active",
+      },
+    ];
+    const { deps, store } = flowHarness({
+      fetchFn: (async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => body,
+        }) as unknown as Response) as typeof fetch,
+      pick: async (entries) => entries[0],
+      identity: { sub: "user-1", label: "ada@example.test" },
+    });
+    await connectAirdress(deps);
+    // Without this the tree can show a signed-in profile and be unable
+    // to say whose credential it holds — which is the whole problem
+    // when a person has more than one account.
+    assert.deepStrictEqual(store.list()[0].account, {
+      sub: "user-1",
+      label: "ada@example.test",
+    });
+  });
+
+  test("re-connecting hands the existing binding to the adoption, so a different account cannot take the profile", async () => {
+    const body = [
+      {
+        id: "00000000-0000-4000-8000-000000000002",
+        name: "example",
+        dns_status: "active",
+      },
+    ];
+    const { deps, store, log } = flowHarness({
+      fetchFn: (async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => body,
+        }) as unknown as Response) as typeof fetch,
+      pick: async (entries) => entries[0],
+      identity: { sub: "user-1", label: "ada@example.test" },
+    });
+    await connectAirdress(deps);
+    await connectAirdress(deps);
+    assert.strictEqual(store.list().length, 1);
+    // The chooser ran on the second connect, so a different account
+    // could have been picked. The adoption is told which one this
+    // profile belongs to; refusing is the manager's job, asking is
+    // this flow's.
+    assert.deepStrictEqual(log.adoptExpected, ["user-1"]);
+  });
+
+  test("a mismatched account leaves the profile alone and says so", async () => {
+    const body = [
+      {
+        id: "00000000-0000-4000-8000-000000000003",
+        name: "example",
+        dns_status: "active",
+      },
+    ];
+    const { deps, store, log } = flowHarness({
+      fetchFn: (async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => body,
+        }) as unknown as Response) as typeof fetch,
+      pick: async (entries) => entries[0],
+      identity: { sub: "user-1", label: "ada@example.test" },
+      adopt: async () => {
+        throw new Error("That sign-in returned somebody else");
+      },
+    });
+    await connectAirdress(deps);
+    const before = store.list()[0];
+    await connectAirdress(deps);
+    const after = store.list();
+    assert.strictEqual(after.length, 1, "no twin row from a refused adoption");
+    assert.deepStrictEqual(after[0].account, before.account, "binding intact");
+    assert.strictEqual(log.errors.length, 1, "the person is told");
+    assert.strictEqual(log.discarded.length, 1, "the candidate is discarded");
   });
 
   test("cancelling the picker discards the credential and creates nothing", async () => {

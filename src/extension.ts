@@ -25,7 +25,8 @@ import { addOpenFileToMapping, detectWorkspaceDrift } from "./drift/commands";
 import { AIRDRESS_SCHEME, LiveManifestProvider } from "./manifests/virtual";
 import { diffAgainstLive, type ManifestDeps } from "./manifests/diff";
 import { applyManifest, validateCommand } from "./manifests/apply";
-import { CallbackRouter } from "./auth/zitadel";
+import { CallbackRouter, type SignInOptions } from "./auth/zitadel";
+import { AccountMismatchError, identityText } from "./auth/identity";
 import { SecretStore } from "./auth/store";
 import { AuthManager } from "./auth/manager";
 import { liveFetchers, pingFetcher } from "./tree/fetchers";
@@ -263,11 +264,19 @@ export function activate(context: vscode.ExtensionContext): void {
   ): Promise<void> {
     await connectAirdress({
       profiles,
-      signIn: (profileId) => auth.signInZitadel(profileId, callbackRouter),
+      // Connecting an airdress is a flow that CHOOSES an account, so it
+      // always asks which one — this extension knowing of only one says
+      // nothing about how many the browser is signed into.
+      signIn: (profileId) =>
+        auth.signInZitadel(profileId, callbackRouter, {
+          prompt: "select_account",
+        }),
       getToken: (profileId) =>
         auth.getAccessToken({ id: profileId, authMode: "zitadel" }),
       discard: (profileId) => auth.signOut(profileId),
-      adopt: (fromId, toId) => auth.adoptCredential(fromId, toId),
+      adopt: (fromId, toId, expected) =>
+        auth.adoptCredential(fromId, toId, expected),
+      identityOf: (profileId) => auth.identityFor(profileId),
       hubUrl: () =>
         vscode.workspace
           .getConfiguration("airdress.hub")
@@ -415,9 +424,17 @@ export function activate(context: vscode.ExtensionContext): void {
       // cancellable — a profile without a credential is fine.
       try {
         if (profile.authMode === "zitadel") {
-          await auth.signInZitadel(profile.id, callbackRouter);
+          await auth.signInZitadel(profile.id, callbackRouter, {
+            prompt: "select_account",
+          });
+          const identity = auth.identityFor(profile.id);
+          if (identity) {
+            await profiles.setAccount(profile.id, identity);
+          }
           void vscode.window.showInformationMessage(
-            `Airdress: signed in to ${profile.label}.`,
+            `Airdress: signed in to ${profile.label} as ${identityText(
+              identity,
+            )}.`,
           );
         } else {
           const bearer = await promptForBearer();
@@ -461,13 +478,48 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         try {
           if (profile.authMode === "zitadel") {
-            const candidate = crypto.randomUUID();
+            // Re-acquiring a credential for an account this profile is
+            // already bound to: no chooser on the first try, because
+            // the usual case is the same person whose refresh token
+            // died, and `login_hint` names who is expected. The check
+            // in adoptCredential is what makes that safe — and when it
+            // does catch a different account, the chooser is offered
+            // rather than the flow simply failing.
+            const hint = profile.account?.label;
+            const signInOnce = async (
+              options: SignInOptions,
+            ): Promise<void> => {
+              const candidate = crypto.randomUUID();
+              try {
+                await auth.signInZitadel(candidate, callbackRouter, options);
+                await auth.adoptCredential(
+                  candidate,
+                  profile.id,
+                  profile.account,
+                );
+                const identity = auth.identityFor(profile.id);
+                if (identity) {
+                  await profiles.setAccount(profile.id, identity);
+                }
+              } catch (err) {
+                await auth.signOut(candidate);
+                throw err;
+              }
+            };
             try {
-              await auth.signInZitadel(candidate, callbackRouter);
-              await auth.adoptCredential(candidate, profile.id);
+              await signInOnce({ loginHint: hint });
             } catch (err) {
-              await auth.signOut(candidate);
-              throw err;
+              if (!(err instanceof AccountMismatchError)) {
+                throw err;
+              }
+              const choose = await vscode.window.showWarningMessage(
+                err.message,
+                "Choose account",
+              );
+              if (choose !== "Choose account") {
+                return;
+              }
+              await signInOnce({ prompt: "select_account", loginHint: hint });
             }
           } else {
             const bearer = await promptForBearer();
@@ -477,7 +529,12 @@ export function activate(context: vscode.ExtensionContext): void {
             await auth.setBearer(profile.id, bearer);
           }
           void vscode.window.showInformationMessage(
-            `Airdress: signed in again to ${profile.label} (${profile.fqdn}).`,
+            `Airdress: signed in again to ${profile.label} (${profile.fqdn})` +
+              `${
+                profile.authMode === "zitadel"
+                  ? ` as ${identityText(auth.identityFor(profile.id))}`
+                  : ""
+              }.`,
           );
           refreshAllViews();
         } catch (err) {
