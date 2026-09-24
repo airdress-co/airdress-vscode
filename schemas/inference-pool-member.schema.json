@@ -163,5 +163,5 @@
   ],
   "title": "Airdress operator InferencePoolMember manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.70"
+  "x-airdress-operator-version": "v0.1.86"
 }
