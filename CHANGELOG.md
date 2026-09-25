@@ -14,6 +14,13 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.7.1](https://github.com/airdress-co/airdress-vscode/compare/v0.7.0...v0.7.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **functions:** a create grants what function.json asks for; the prompt names the real version; the result ends the progress ([00d3341](https://github.com/airdress-co/airdress-vscode/commit/00d334126b91115e8654729def184fe625c3f241))
+
 ## [0.7.0](https://github.com/airdress-co/airdress-vscode/compare/v0.6.0...v0.7.0) (2026-09-25)
 
 
