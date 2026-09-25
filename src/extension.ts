@@ -56,7 +56,10 @@ import {
   drivePanel,
 } from "./webview/panel";
 import * as YAML from "yaml";
-import { registerFunctionCommands } from "./functions/commands";
+import {
+  registerFunctionCommands,
+  type FunctionCommands,
+} from "./functions/commands";
 
 /**
  * Singleton auth-callback dispatcher. VS Code allows one UriHandler per
@@ -158,6 +161,8 @@ export function activate(context: vscode.ExtensionContext): void {
       correctnessFor: (profileId) => statusCache.correctnessFor(profileId),
     },
   );
+  // Set once function commands are registered, below; the "+" reads it.
+  const functions: { commands?: FunctionCommands } = {};
   const resourcesTree = new ResourcesTreeProvider(
     profiles,
     fetchers,
@@ -739,8 +744,15 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
 
+    // The "+" for a Function: from a template, blank, or a bundle (the
+    // schema form, unchanged). Other kinds keep the form.
     vscode.commands.registerCommand("airdress.functions.new", async () => {
-      await newFunctionCommand(resourcePanelDeps);
+      const profile = await resolveProfile(profiles);
+      if (profile && functions.commands) {
+        await functions.commands.newFunction(profile);
+      } else if (profile) {
+        await newFunctionCommand(resourcePanelDeps);
+      }
     }),
 
     // Generic CRUD. The tree lists every registered Kind but
@@ -771,6 +783,10 @@ export function activate(context: vscode.ExtensionContext): void {
         placeHolder: "Which kind of resource?",
       });
       if (!kind) {
+        return;
+      }
+      if (kind === "Function" && functions.commands) {
+        await functions.commands.newFunction(profile);
         return;
       }
       await newResourceCommand(resourcePanelDeps, kind);
@@ -859,11 +875,20 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Function source and templates: the editing loop, the served-file
   // scheme, and the single save hook (dry run only).
-  registerFunctionCommands({
+  functions.commands = registerFunctionCommands({
     context,
     profiles,
     manifestDeps,
     resolveProfile: (explicit) => resolveProfile(profiles, explicit),
+    openBundleForm: async (profile) => {
+      await openResourcePanel(
+        resourcePanelDeps,
+        profile,
+        "Function",
+        undefined,
+      );
+    },
+    refreshResources: () => resourcesTree.refresh(),
   });
 
   // Development-mode only: a script's way into an open panel — the same

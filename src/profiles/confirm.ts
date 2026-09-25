@@ -128,6 +128,115 @@ export function publishTemplateConfirm(
   );
 }
 
+/** A modal's headline and the text under it. */
+export interface PromptText {
+  readonly message: string;
+  readonly detail: string;
+}
+
+/**
+ * Deploy, replacing what an existing function runs. One prompt, before
+ * the first write; the command line prints the same lines.
+ */
+export function deployReplaceConfirm(
+  opts: {
+    name: string;
+    replacing: string;
+    replacingNote?: string;
+    version: string;
+    files: number;
+    unreached: number;
+    signer: string;
+  },
+  profile: Pick<Profile, "label" | "fqdn">,
+): PromptText {
+  const reach =
+    opts.unreached > 0 ? `; ${opts.unreached} not reached by an import` : "";
+  return {
+    message: `Deploy ${opts.name} on ${targetPhrase(profile)}?`,
+    detail: [
+      `replace  ${opts.replacing}${opts.replacingNote ? `  (${opts.replacingNote})` : ""}`,
+      `with     ${opts.version}  (${opts.files} ${opts.files === 1 ? "file" : "files"}${reach})`,
+      `signed by ${opts.signer}`,
+      "The grant does not change.",
+    ].join("\n"),
+  };
+}
+
+/**
+ * Deploy, creating a function. The grant is shown in full, as the YAML
+ * that will be applied: creating a function is the owner deciding what it
+ * may do, and nothing else in the loop asks that.
+ */
+export function deployCreateConfirm(
+  opts: {
+    name: string;
+    template?: string;
+    version: string;
+    files: number;
+    signers: string;
+    grantYaml: string;
+    configValues: number;
+    secretValues: number;
+  },
+  profile: Pick<Profile, "label" | "fqdn">,
+): PromptText {
+  const from = opts.template ? ` from template "${opts.template}"` : "";
+  const grant = opts.grantYaml.trim()
+    ? [
+        "It will be allowed to:",
+        ...opts.grantYaml
+          .trimEnd()
+          .split("\n")
+          .map((l) => `  ${l}`),
+      ]
+    : [
+        "It will be allowed nothing beyond answering requests (no capabilities).",
+      ];
+  const config =
+    opts.configValues === 0
+      ? "Config: none"
+      : `Config: ${opts.configValues} ${opts.configValues === 1 ? "value" : "values"} (${
+          opts.secretValues === 0
+            ? "none secret"
+            : `${opts.secretValues} read from secrets`
+        })`;
+  return {
+    message: `Create ${opts.name} on ${targetPhrase(profile)}${from}?`,
+    detail: [
+      `version  ${opts.version}  (${opts.files} ${opts.files === 1 ? "file" : "files"})`,
+      `signers  ${opts.signers}`,
+      ...grant,
+      config,
+    ].join("\n"),
+  };
+}
+
+/**
+ * A change to who may sign a function: its own apply, never part of a
+ * Deploy, and never sent without the resulting set shown.
+ */
+export function signerSetConfirm(
+  opts: {
+    name: string;
+    change: string;
+    resulting: readonly string[];
+    warning?: string;
+  },
+  profile: Pick<Profile, "label" | "fqdn">,
+): PromptText {
+  return {
+    message: `${opts.change} for ${opts.name} on ${targetPhrase(profile)}?`,
+    detail: [
+      ...(opts.warning ? [opts.warning, ""] : []),
+      "Allowed to sign afterwards:",
+      ...opts.resulting.map((r) => `  - ${r}`),
+      "",
+      "This changes spec.source.signers and nothing else in the manifest. It deploys nothing.",
+    ].join("\n"),
+  };
+}
+
 /** Whether a prompt names its target the way this module promises. */
 export function namesTarget(
   text: string,

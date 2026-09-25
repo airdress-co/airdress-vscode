@@ -36,6 +36,10 @@ export interface SourceVersion {
   readonly origin?: string;
   readonly publishedAt?: string;
   readonly publishedBy?: string;
+  /** The key that signed it, hex; absent for an unsigned version. */
+  readonly signer?: string;
+  /** The machine it was published under, if one signed it. */
+  readonly signerRef?: string;
 }
 
 /** `GET /v1/functions/{name}/versions` — only what the client reads. */
@@ -224,6 +228,8 @@ export async function readVersion(
       typeof body.publishedAt === "string" ? body.publishedAt : undefined,
     publishedBy:
       typeof body.publishedBy === "string" ? body.publishedBy : undefined,
+    signer: typeof body.signer === "string" ? body.signer : undefined,
+    signerRef: typeof body.signerRef === "string" ? body.signerRef : undefined,
   };
 }
 
@@ -341,4 +347,48 @@ export async function readTemplate(
     throw new UnexpectedSourceResponse(`GET ${route}`);
   }
   return { ...summary, files: files as Record<string, string> };
+}
+
+/** The `200` body of `POST /v1/functions/{name}/promote`. */
+export interface Promoted {
+  readonly name: string;
+  readonly version: string;
+  /** What ran before; null when the function ran nothing. */
+  readonly previous: string | null;
+  /** The generation the write created (or the current one, unchanged). */
+  readonly generation?: number;
+  /** False when the version asked for was already the one running. */
+  readonly changed: boolean;
+}
+
+/**
+ * `POST /v1/functions/{name}/promote` — make an already published version
+ * the one that runs, and change nothing else in the manifest. `basedOn`
+ * is the version the caller believes runs now; the operator refuses a
+ * stale one rather than overwrite a change the caller has not seen.
+ */
+export async function promoteVersion(
+  client: ApiClient,
+  name: string,
+  body: { readonly version: string; readonly basedOn: string | null },
+): Promise<Promoted> {
+  const route = `/v1/functions/${enc(name)}/promote`;
+  const out = await client.request<unknown>(route, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      version: body.version,
+      ...(body.basedOn ? { basedOn: body.basedOn } : {}),
+    }),
+  });
+  if (!isRecord(out) || typeof out.changed !== "boolean") {
+    throw new UnexpectedSourceResponse(`POST ${route}`);
+  }
+  return {
+    name: typeof out.name === "string" ? out.name : name,
+    version: typeof out.version === "string" ? out.version : body.version,
+    previous: typeof out.previous === "string" ? out.previous : null,
+    generation: typeof out.generation === "number" ? out.generation : undefined,
+    changed: out.changed,
+  };
 }

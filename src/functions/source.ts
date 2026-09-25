@@ -22,6 +22,14 @@ import {
   type SourceTree,
 } from "./local";
 import {
+  allowedSigners,
+  describeSet,
+  describeVersionSigner,
+  isKeyMember,
+  listMachines,
+  versionSigner,
+} from "./signers";
+import {
   isStaleBase,
   publishSource,
   readFile,
@@ -155,6 +163,10 @@ export type SourceListing =
        * and the authoring API will not write them.
        */
       readonly importedFrom?: string;
+      /** Who may sign it, in words: the function's signer set. */
+      readonly signers?: string;
+      /** Who signed the version it serves, in words. */
+      readonly runningSigner?: string;
     }
   | { readonly kind: "none"; readonly reason: string };
 
@@ -229,11 +241,22 @@ export async function sourceListing(
     };
   }
   const version = await readVersion(client, history.current);
+  const set = allowedSigners(spec.source);
+  const signer = versionSigner(
+    isRecord(live) && isRecord(live.status) ? live.status : undefined,
+    version,
+  );
+  const machines =
+    set.some((m) => !isKeyMember(m)) || signer?.machine
+      ? await listMachines(client)
+      : [];
   return {
     kind: "files",
     version: version.version,
     files: version.files,
     importedFrom,
+    signers: isRecord(spec.source) ? describeSet(set, machines) : undefined,
+    runningSigner: signer ? describeVersionSigner(signer, machines) : undefined,
   };
 }
 
@@ -397,8 +420,9 @@ function signingHint(code: string): string {
   return code === "source_unsigned" ||
     code === "source_signature_invalid" ||
     code === "source_signer_mismatch"
-    ? " The editor signs with the seed named in airdress.functions.signingKeyFile" +
-        " (and names airdress.functions.signerMachine when set)."
+    ? " The editor signs with the key file in airdress.functions.signingKeyFile, or" +
+        " else the key it keeps in this workstation's keychain (and names" +
+        " airdress.functions.signerMachine when set)."
     : "";
 }
 

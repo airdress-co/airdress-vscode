@@ -46,6 +46,25 @@ with schema validation and see the diff against what is actually running
   on the one you read; if the function moved meanwhile, you are shown
   the difference, never retried over it. A function whose source is
   imported by configuration management says so and stays read-only.
+- **Deploy, in one step.** "Airdress: Deploy Function" takes the
+  folder you are editing to a function serving it: the operator checks
+  it unsigned, its digest must match the editor's, you confirm once,
+  and only then is it signed, published and made to run — by promote,
+  which changes nothing but the version, for a function that exists, or
+  by one apply showing the whole grant, for a new one. It then waits
+  until the function reports the new version loaded. The first Deploy
+  offers to make this workstation's signing key, kept in the operating
+  system's keychain ("Airdress: Export Signing Key…" writes it out for
+  the command line).
+- **Start from working code.** "+" on the Function kind asks: from a
+  template, a blank source function, or a bundle (the form). The first
+  two write the operator's files into a folder with a `function.yaml`
+  beside them, and offer Deploy.
+- **Who may deploy, on the function.** A source Function's row shows
+  its signers and who signed what runs. "Allow Another Signer…" (a key,
+  this workstation, or an enrolled machine) and "Remove Signer…" are
+  each their own apply, shown before it is sent — never part of a
+  Deploy.
 - **Templates, with the grant left to you.** "Airdress: New Function
   from Template…" lists the operator's catalogue. A template's options
   are a form (a secret is named, never pasted); the grants it needs are
@@ -89,7 +108,11 @@ F5, or isolated from your daily profile via the command line — see
   routes, `local.ts` the folder and the signature, `source.ts` the
   editing loop, `diagnostics.ts` refusals as markers, `templates.ts`
   the form and the grant suggestion (pure), `templatePanel.ts` +
-  `browser/templateForm.ts` → `dist/templateForm.js`.
+  `browser/templateForm.ts` → `dist/templateForm.js`; `deploy.ts` the
+  Deploy loop and `stops.ts` its stop codes (held to
+  `deploy-stops.txt`), `createPick.ts` the "+", `signingKey.ts` the
+  keychain key, `signers.ts` + `signerFlows.ts` the signer set,
+  `functionManifest.ts` the live manifest and `function.yaml`.
 - `src/selector/` — the Airdress view: `protocol.ts` shared by both
   bundles, `controller.ts` behind a host seam, `view.ts` the
   WebviewView, `browser/main.ts` → `dist/selector.js`.

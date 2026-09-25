@@ -219,7 +219,7 @@ suite("templates: the config form becomes spec.config", () => {
     const draft = manifestDraft({
       name: "relay",
       version: VERSION,
-      signer: { signer: "ab".repeat(32) },
+      signer: { signers: [{ key: "ab".repeat(32) }] },
       config: configEntries(fields, { token: "peer-token", target: "x" })
         .entries,
       requires: {},
@@ -231,9 +231,10 @@ suite("templates: the config form becomes spec.config", () => {
       { name: "target", value: "x" },
       { name: "token", valueFrom: { secretRef: "peer-token" } },
     ]);
+    // Only the set form is written, even for one signer.
     assert.deepStrictEqual(doc.spec.source, {
       version: VERSION,
-      signer: "ab".repeat(32),
+      signers: [{ key: "ab".repeat(32) }],
     });
     assert.strictEqual(doc.spec.runtime, "js-source/v1");
   });
