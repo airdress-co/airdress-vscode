@@ -511,6 +511,10 @@ export function versionLensTitle(
     case "live":
       break;
   }
+  // The version can match git and still not run: say so before "serving".
+  if (live.loaded?.status === "False") {
+    return `$(error) not loaded on ${live.operator}: ${live.loaded.reason ?? "no reason given"}`;
+  }
   switch (driftOf(ctx, live)) {
     case "in-step":
       return `$(pass) serving on ${live.operator}`;

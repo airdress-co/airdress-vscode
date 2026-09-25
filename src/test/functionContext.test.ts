@@ -194,6 +194,14 @@ suite("Function context: what the editor shows", () => {
     assert.strictEqual(driftOf(ctx, inStep), "in-step");
     assert.match(statusText(ctx, inStep).text, /\$\(pass\) aaaaaaaaaaaa$/);
     assert.strictEqual(versionLensTitle(ctx, inStep), "$(pass) serving on op");
+    // In step with git, and still not running: the lens says so.
+    assert.strictEqual(
+      versionLensTitle(ctx, {
+        ...inStep,
+        loaded: { status: "False", reason: "CapabilityNotGranted" },
+      }),
+      "$(error) not loaded on op: CapabilityNotGranted",
+    );
 
     const moved: LiveState = { ...inStep, serving: "sha256:bbbbbbbbbbbbbbbb" };
     assert.strictEqual(driftOf(ctx, moved), "git-behind");
