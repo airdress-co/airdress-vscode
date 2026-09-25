@@ -541,7 +541,6 @@ export class AuthoringSchemas implements vscode.Disposable {
     this.disposables.push(
       vscode.workspace.onDidOpenTextDocument(check),
       vscode.workspace.onDidChangeTextDocument((e) => check(e.document, true)),
-      vscode.workspace.onDidSaveTextDocument((d) => check(d)),
       vscode.workspace.onDidCloseTextDocument((d) =>
         this.diagnostics.delete(d.uri),
       ),
@@ -555,6 +554,14 @@ export class AuthoringSchemas implements vscode.Disposable {
     for (const d of this.disposables) {
       d.dispose();
     }
+  }
+
+  /**
+   * A save. Called from the extension's one save hook (there is exactly
+   * one, and a test holds it to that), never from a listener of its own.
+   */
+  saved(doc: vscode.TextDocument): Promise<void> {
+    return this.check(doc);
   }
 
   /**
