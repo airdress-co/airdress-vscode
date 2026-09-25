@@ -127,7 +127,8 @@ state under `<repo>/.dev-host/` (gitignored). That directory holds the
 sign-in, so it survives launches and reboots — a scratch directory
 under `/tmp` did not, and took a signed-in host with it on 2026-09-13.
 `tools/dev-host/vsc.sh --info` tells you the driver answers;
-`tools/dev-host/vsc.sh <command> '[json args]'` runs a command.
+`tools/dev-host/vsc.sh <command> '[json args]'` runs a command. An argument
+written `{"$uri": "file:///…"}` reaches the command as a `Uri`.
 Delete `.dev-host/` to start from nothing. The manual form:
 
 ```sh

@@ -456,8 +456,15 @@ export class FunctionLensProvider implements vscode.CodeLensProvider {
     out.push(
       new vscode.CodeLens(versionRange, {
         title: versionLensTitle(ctx, live),
-        command: "airdress.functions.versions",
-        tooltip: "The versions this function served and stores",
+        ...(live?.kind === "no-profile"
+          ? {
+              command: "airdress.connectAirdress",
+              tooltip: `Connect ${ctx.operator ?? "an airdress"} to read what it runs`,
+            }
+          : {
+              command: "airdress.functions.versions",
+              tooltip: "The versions this function served and stores",
+            }),
       }),
     );
     const signersPath = /\bsigners\s*:/.test(text)
