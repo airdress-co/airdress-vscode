@@ -164,12 +164,13 @@ export function registerFunctionCommands(
     const id = profiles.activeId();
     return id ? profiles.get(id) : undefined;
   };
-  const contexts = new FunctionContextService({
+  const contexts: FunctionContextService = new FunctionContextService({
     profileFor,
     activeProfile,
     client: (p) => clientFor(manifestDeps, p),
     output,
   });
+  const schemas = new AuthoringSchemas(contexts);
   const sourceDeps: SourceDeps = {
     client: (p) => clientFor(manifestDeps, p),
     profileFor,
@@ -628,6 +629,7 @@ export function registerFunctionCommands(
     // operator's dry run and can do nothing else: `validateOnSave` fixes
     // `dryRun: true`, and a test holds every request it makes to that.
     vscode.workspace.onDidSaveTextDocument(async (doc) => {
+      void schemas.saved(doc);
       if (
         !vscode.workspace
           .getConfiguration("airdress.functions")
@@ -656,7 +658,7 @@ export function registerFunctionCommands(
     contexts,
     output,
     createFunctionStatusBar(contexts),
-    new AuthoringSchemas(contexts),
+    schemas,
     vscode.languages.registerCodeLensProvider(
       [
         { scheme: "file", pattern: "**/function.json" },
