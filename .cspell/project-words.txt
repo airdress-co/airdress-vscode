@@ -1,11 +1,13 @@
+# airdress-vscode project dictionary
+# Format: https://cspell.org/docs/dictionaries/custom-dictionaries
 affordances
 airdr
-airdress
 Airdress
+airdress
 Airdresses
-# airdress-vscode project dictionary
 Ajv
 behaviour
+cesql
 checkmark
 checkmarks
 ciphertext
@@ -15,7 +17,6 @@ creds
 defence
 esbuild
 exthost
-# Format: https://cspell.org/docs/dictionaries/custom-dictionaries
 generalisation
 headlessly
 homelab
@@ -27,8 +28,8 @@ normalised
 openvsx
 ovsx
 PKCE
-prek
 Prek
+prek
 pygrep
 pyinfra
 recognises
@@ -46,5 +47,5 @@ VSCodium
 VSIX
 webpush
 wordmark
-zitadel
 ZITADEL
+zitadel

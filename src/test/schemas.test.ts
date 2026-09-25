@@ -214,7 +214,7 @@ suite("bundled operator-kind schemas (T6-05)", () => {
     assert.strictEqual(runtime.status, "valid");
   });
 
-  test("Function: a limit outside the schema's range and a missing bundle are invalid", () => {
+  test("Function: a limit outside the schema's range is invalid; bundle or source is the operator's check", () => {
     const limit = realRegistry().validateText(
       FUNCTION_MANIFEST.replace("memoryMib: 128", "memoryMib: 8"),
     );
@@ -229,7 +229,10 @@ suite("bundled operator-kind schemas (T6-05)", () => {
         "  enabled: true",
       ].join("\n"),
     );
-    assert.strictEqual(noBundle.status, "invalid");
+    // Since the source tier, `bundle` is one of two ways to say what runs
+    // (`spec.source` is the other), so the schema no longer requires it;
+    // the operator refuses a manifest with neither, or both, at apply.
+    assert.strictEqual(noBundle.status, "valid");
   });
 
   // Derived from the bundle, not hand-listed: a Kind added to index.ts
