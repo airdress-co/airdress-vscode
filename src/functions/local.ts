@@ -45,6 +45,19 @@ export interface Checkout {
   readonly record: CheckoutRecord;
 }
 
+/**
+ * Folders resolved from the repository itself — `function.yaml` and the
+ * map file — rather than from a record this editor wrote. Their state is
+ * git's: the served version goes into `function.yaml`, and no
+ * `.airdress-function.json` is ever written beside them.
+ */
+const repositoryFolders = new Set<string>();
+
+/** Mark a folder as resolved from the repository (see above). */
+export function markRepositoryFolder(root: vscode.Uri): void {
+  repositoryFolders.add(root.path);
+}
+
 /** A source tree: archive path → bytes. */
 export type SourceTree = Map<string, Uint8Array>;
 
@@ -97,6 +110,9 @@ export async function writeCheckout(
   root: vscode.Uri,
   record: CheckoutRecord,
 ): Promise<void> {
+  if (repositoryFolders.has(root.path)) {
+    return;
+  }
   await vscode.workspace.fs.writeFile(
     vscode.Uri.joinPath(root, CHECKOUT_FILE),
     Buffer.from(JSON.stringify(record, null, 2) + "\n", "utf8"),

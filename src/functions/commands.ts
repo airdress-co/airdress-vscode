@@ -8,9 +8,19 @@ import {
   pickFunctionStart,
   type CreateDeps,
 } from "./createPick";
+import { logLineText, shortDigest, type FunctionContext } from "./context";
+import {
+  AuthoringSchemas,
+  createFunctionStatusBar,
+  FunctionContextService,
+  FunctionLensProvider,
+  syncCommittedSigners,
+} from "./contextUi";
 import { deployCheckout, type DeployDeps } from "./deploy";
+import { readLiveFunction } from "./functionManifest";
 import {
   checkoutFor,
+  markRepositoryFolder,
   treeRootFor,
   type Checkout,
   type SigningChoice,
@@ -46,7 +56,7 @@ import {
   type TemplateDeps,
   type TemplateUI,
 } from "./templateFlows";
-import { readHistory } from "./wire";
+import { promoteVersion, readHistory, refusalOf } from "./wire";
 
 /**
  * Wiring for function source and templates: commands, the served-file
@@ -143,12 +153,23 @@ export function registerFunctionCommands(
   };
   const diagnostics =
     vscode.languages.createDiagnosticCollection("airdress-source");
+  const output = vscode.window.createOutputChannel("Airdress Functions");
   const profileFor = (fqdn: string) => {
     const matches = profiles
       .list()
       .filter((p) => p.fqdn.toLowerCase() === fqdn.toLowerCase());
     return matches.find((p) => p.authMode === "zitadel") ?? matches[0];
   };
+  const activeProfile = () => {
+    const id = profiles.activeId();
+    return id ? profiles.get(id) : undefined;
+  };
+  const contexts = new FunctionContextService({
+    profileFor,
+    activeProfile,
+    client: (p) => clientFor(manifestDeps, p),
+    output,
+  });
   const sourceDeps: SourceDeps = {
     client: (p) => clientFor(manifestDeps, p),
     profileFor,
@@ -224,7 +245,7 @@ export function registerFunctionCommands(
       if (
         (await allowAnotherSigner(signerDeps, p, name, member)) === "applied"
       ) {
-        deps.refreshResources();
+        await signersApplied(p, name);
       }
     },
     waitTimeoutMs:
@@ -243,6 +264,7 @@ export function registerFunctionCommands(
     if (outcome.kind === "deployed" || outcome.kind === "unchanged") {
       deps.refreshResources();
     }
+    contexts.invalidateLive(checkout.root.path);
     return outcome;
   };
   const createDeps: CreateDeps = {
@@ -271,23 +293,322 @@ export function registerFunctionCommands(
       ? { profile: node.profile, name: node.resource.name }
       : undefined;
 
+  /**
+   * A folder the repository itself describes — `function.yaml` names the
+   * function and the version git says runs; the map file or the active
+   * profile names the operator — needs no question and no record.
+   */
+  function repositoryCheckout(ctx: FunctionContext): Checkout | undefined {
+    if (ctx.checkoutPath || (ctx.nameFrom === "folder" && !ctx.operator)) {
+      return undefined;
+    }
+    const profile = contexts.profileOf(ctx);
+    if (!profile) {
+      return undefined;
+    }
+    const root = vscode.Uri.file(ctx.root);
+    markRepositoryFolder(root);
+    return {
+      root,
+      record: {
+        operator: profile.fqdn,
+        function: ctx.name,
+        basedOn: ctx.basedOn,
+      },
+    };
+  }
+
+  /** The checkout a file belongs to: its record, the repository, or a folder to adopt. */
+  async function checkoutOfFile(
+    file: vscode.Uri,
+    adopt: boolean,
+  ): Promise<Checkout | undefined> {
+    const found = await checkoutFor(file);
+    if (found) {
+      return found;
+    }
+    const ctx = await contexts.forUri(file);
+    const fromRepo = ctx ? repositoryCheckout(ctx) : undefined;
+    if (fromRepo || !adopt) {
+      return fromRepo;
+    }
+    const root = await treeRootFor(file);
+    return root ? adoptFolder(sourceDeps, root) : undefined;
+  }
+
   /** The checkout the active editor is in, or a folder to adopt. */
   async function activeCheckout(): Promise<Checkout | undefined> {
     const file = vscode.window.activeTextEditor?.document.uri;
     if (file?.scheme === "file") {
-      const found = await checkoutFor(file);
+      const found = await checkoutOfFile(file, true);
       if (found) {
         return found;
-      }
-      const root = await treeRootFor(file);
-      if (root) {
-        return adoptFolder(sourceDeps, root);
       }
     }
     const root = await vscodeSourceUI.pickFolder(
       vscode.workspace.workspaceFolders?.[0]?.uri,
     );
     return root ? adoptFolder(sourceDeps, root) : undefined;
+  }
+
+  /**
+   * After a signer-set apply: refresh the view, and write the live set
+   * into the committed manifests for this function, so git says who may
+   * sign as the operator does.
+   */
+  async function signersApplied(profile: Profile, name: string): Promise<void> {
+    deps.refreshResources();
+    contexts.invalidateLive();
+    try {
+      const live = await readLiveFunction(
+        clientFor(manifestDeps, profile),
+        name,
+      );
+      const source = live?.spec.source;
+      const signers =
+        typeof source === "object" && source !== null
+          ? (source as Record<string, unknown>).signers
+          : undefined;
+      if (!Array.isArray(signers)) {
+        return;
+      }
+      const written = await syncCommittedSigners(
+        profile,
+        name,
+        signers,
+        output,
+      );
+      if (written.length > 0) {
+        void vscode.window.setStatusBarMessage(
+          `Airdress: wrote the signer set into ${written
+            .map((p) => vscode.workspace.asRelativePath(p))
+            .join(", ")} — commit it.`,
+          10_000,
+        );
+      }
+    } catch (err) {
+      output.appendLine(
+        `[signers] could not update the committed manifest for ${name}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /** The active editor's function and the profile it deploys through. */
+  async function activeTarget(): Promise<
+    { ctx: FunctionContext; profile: Profile } | undefined
+  > {
+    const uri = vscode.window.activeTextEditor?.document.uri;
+    const ctx = uri ? await contexts.forUri(uri) : contexts.current();
+    if (!ctx) {
+      vscodeSourceUI.error(
+        "Airdress: the active editor is not inside a function (no function.json above it).",
+      );
+      return undefined;
+    }
+    const profile = contexts.profileOf(ctx) ?? (await deps.resolveProfile());
+    if (!profile) {
+      return undefined;
+    }
+    return { ctx, profile };
+  }
+
+  /** The function's durable log, newest 200 lines, oldest first. */
+  async function showLog(profile: Profile, name: string): Promise<void> {
+    const channel = logChannel(name);
+    channel.clear();
+    channel.show(true);
+    channel.appendLine(`${name} on ${profile.fqdn} — the last 200 lines`);
+    try {
+      const body = await clientFor(manifestDeps, profile).request<unknown>(
+        `/v1/functions/${encodeURIComponent(name)}/logs?limit=200`,
+      );
+      const lines =
+        typeof body === "object" &&
+        body !== null &&
+        Array.isArray((body as Record<string, unknown>).lines)
+          ? ((body as Record<string, unknown>).lines as unknown[])
+          : [];
+      if (lines.length === 0) {
+        channel.appendLine("(no lines)");
+      }
+      for (const line of [...lines].reverse()) {
+        channel.appendLine(logLineText(line));
+      }
+    } catch (err) {
+      channel.appendLine(
+        `reading the log failed — ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  const logChannels = new Map<string, vscode.OutputChannel>();
+  function logChannel(name: string): vscode.OutputChannel {
+    let channel = logChannels.get(name);
+    if (!channel) {
+      channel = vscode.window.createOutputChannel(`Airdress: ${name} log`);
+      logChannels.set(name, channel);
+      context.subscriptions.push(channel);
+    }
+    return channel;
+  }
+
+  /** What the function served and stores; pick one to open, compare or run. */
+  async function pickVersion(
+    profile: Profile,
+    ctx: FunctionContext,
+  ): Promise<void> {
+    const client = clientFor(manifestDeps, profile);
+    let body: Record<string, unknown>;
+    try {
+      const raw = await client.request<unknown>(
+        `/v1/functions/${encodeURIComponent(ctx.name)}/versions`,
+      );
+      body =
+        typeof raw === "object" && raw !== null
+          ? (raw as Record<string, unknown>)
+          : {};
+    } catch (err) {
+      vscodeSourceUI.error(
+        `Airdress: reading the versions of ${ctx.name} failed — ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    const current = typeof body.current === "string" ? body.current : null;
+    const deployments = Array.isArray(body.deployments) ? body.deployments : [];
+    const stored = Array.isArray(body.versions) ? body.versions : [];
+    const deployedBy = new Map<string, string>();
+    for (const d of deployments as Array<Record<string, unknown>>) {
+      if (typeof d.version === "string" && !deployedBy.has(d.version)) {
+        deployedBy.set(
+          d.version,
+          `generation ${String(d.generation)} by ${String(d.actor)} at ${String(d.at)}`,
+        );
+      }
+    }
+    const items = (stored as Array<Record<string, unknown>>)
+      .filter((v) => typeof v.version === "string")
+      .map((v) => {
+        const version = v.version as string;
+        const tags = [
+          version === current ? "runs now" : undefined,
+          version === ctx.committedVersion ? "in function.yaml" : undefined,
+        ].filter(Boolean);
+        return {
+          label: `${version === current ? "$(play) " : ""}${shortDigest(version)}`,
+          description: tags.join(" · "),
+          detail: `published ${String(v.publishedAt)} by ${String(v.publishedBy)}${
+            deployedBy.has(version)
+              ? ` — deployed ${deployedBy.get(version)}`
+              : ""
+          }`,
+          version,
+        };
+      });
+    if (items.length === 0) {
+      void vscode.window.showInformationMessage(
+        `Airdress: ${ctx.name} stores no source version on ${profile.fqdn}.`,
+      );
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: `${ctx.name} on ${profile.fqdn}: stored versions, newest first`,
+      matchOnDetail: true,
+    });
+    if (!picked) {
+      return;
+    }
+    const OPEN = "Open its function.json";
+    const COMPARE = "Compare with this folder";
+    const RUN = "Run this version (promote)";
+    const action = await vscode.window.showQuickPick(
+      picked.version === current ? [OPEN, COMPARE] : [OPEN, COMPARE, RUN],
+      { placeHolder: shortDigest(picked.version) },
+    );
+    if (action === OPEN) {
+      await vscodeSourceUI.open(
+        servedUri(profile.id, picked.version, "function.json"),
+      );
+    } else if (action === COMPARE) {
+      const checkout = await checkoutOfFile(
+        vscode.Uri.joinPath(vscode.Uri.file(ctx.root), "function.json"),
+        false,
+      );
+      if (checkout) {
+        await showDifference(sourceDeps, profile, checkout, picked.version);
+      }
+    } else if (action === RUN) {
+      const ok = await vscodeSourceUI.confirm(
+        `Run ${shortDigest(picked.version)} as ${ctx.name} on ${profile.fqdn}? ` +
+          `Only spec.source.version changes; ${shortDigest(current)} stops running. ` +
+          "function.yaml in git is not changed — commit the version afterwards.",
+        "Promote",
+      );
+      if (!ok) {
+        return;
+      }
+      try {
+        const out = await promoteVersion(client, ctx.name, {
+          version: picked.version,
+          basedOn: current,
+        });
+        void vscode.window.showInformationMessage(
+          out.changed
+            ? `Airdress: ${ctx.name} now runs ${shortDigest(out.version)} (generation ${out.generation ?? "?"}).`
+            : `Airdress: ${ctx.name} already ran ${shortDigest(out.version)}.`,
+        );
+      } catch (err) {
+        const refusal = refusalOf(err);
+        vscodeSourceUI.error(
+          `Airdress: promote refused${refusal ? ` (${refusal.error}): ${refusal.message}` : ` — ${err instanceof Error ? err.message : String(err)}`}`,
+        );
+      }
+      contexts.invalidateLive(ctx.root);
+      deps.refreshResources();
+    }
+  }
+
+  /**
+   * The save hook for a folder the repository describes: the same dry
+   * run as a checkout's, answered quietly — markers in Problems, words in
+   * the output channel, never a dialog on save.
+   */
+  async function validateRepositoryFolder(file: vscode.Uri): Promise<void> {
+    const ctx = await contexts.forUri(file);
+    if (!ctx) {
+      return;
+    }
+    const rel = file.path.slice(ctx.root.length + 1);
+    if (rel !== "function.json" && !rel.startsWith("src/")) {
+      return;
+    }
+    const checkout = repositoryCheckout(ctx);
+    if (!checkout) {
+      output.appendLine(
+        `[validate] ${ctx.name}: no profile resolves for ${ctx.operator ?? "an operator"}; not checked.`,
+      );
+      return;
+    }
+    const say = (m: string) => {
+      output.appendLine(`[validate] ${m}`);
+      return Promise.resolve(undefined);
+    };
+    await publishCheckout(
+      {
+        ...sourceDeps,
+        ui: {
+          ...vscodeSourceUI,
+          info: say,
+          warn: say,
+          error: (m) => void say(m),
+          confirm: async () => false,
+          status: (m) => void vscode.window.setStatusBarMessage(m, 5000),
+        },
+      },
+      checkout,
+      { dryRun: true },
+    );
   }
 
   // One dry run per checkout at a time; a save during one is folded in.
@@ -307,16 +628,135 @@ export function registerFunctionCommands(
     // operator's dry run and can do nothing else: `validateOnSave` fixes
     // `dryRun: true`, and a test holds every request it makes to that.
     vscode.workspace.onDidSaveTextDocument(async (doc) => {
+      if (
+        !vscode.workspace
+          .getConfiguration("airdress.functions")
+          .get<boolean>("validateOnSave", true)
+      ) {
+        return;
+      }
       const key = doc.uri.toString();
       if (inFlight.has(key)) {
         return;
       }
       inFlight.add(key);
       try {
-        await validateOnSave(sourceDeps, doc.uri);
+        const done = await validateOnSave(sourceDeps, doc.uri);
+        if (done === undefined) {
+          await validateRepositoryFolder(doc.uri);
+        }
       } finally {
         inFlight.delete(key);
       }
+      const ctx = await contexts.forUri(doc.uri);
+      if (ctx) {
+        contexts.invalidateLive(ctx.root);
+      }
+    }),
+    contexts,
+    output,
+    createFunctionStatusBar(contexts),
+    new AuthoringSchemas(contexts),
+    vscode.languages.registerCodeLensProvider(
+      [
+        { scheme: "file", pattern: "**/function.json" },
+        { scheme: "file", pattern: "**/function.yaml" },
+        { scheme: "file", pattern: "**/src/**/*.{ts,mts,js,mjs}" },
+      ],
+      new FunctionLensProvider(contexts),
+    ),
+
+    vscode.commands.registerCommand("airdress.functions.logs", async () => {
+      const target = await activeTarget();
+      if (target) {
+        await showLog(target.profile, target.ctx.name);
+      }
+    }),
+
+    vscode.commands.registerCommand("airdress.functions.versions", async () => {
+      const target = await activeTarget();
+      if (target) {
+        await pickVersion(target.profile, target.ctx);
+      }
+    }),
+
+    vscode.commands.registerCommand(
+      "airdress.functions.showOnOperator",
+      async () => {
+        const target = await activeTarget();
+        if (target) {
+          await vscode.commands.executeCommand("airdress.resources.open", {
+            type: "resource",
+            profile: target.profile,
+            resource: { kind: "Function", name: target.ctx.name },
+          });
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand("airdress.functions.actions", async () => {
+      const ctx = contexts.current();
+      if (!ctx) {
+        return;
+      }
+      const live = contexts.cachedLive(ctx);
+      const items: Array<
+        vscode.QuickPickItem & { command: string; args?: unknown[] }
+      > = [
+        {
+          label: "$(rocket) Deploy",
+          description: ctx.operator ?? contexts.profileOf(ctx)?.fqdn,
+          command: "airdress.functions.deploy",
+          args: [vscode.Uri.file(ctx.root)],
+        },
+        {
+          label: "$(check) Validate",
+          description: "the operator's checks, nothing stored",
+          command: "airdress.functions.source.validate",
+        },
+        { label: "$(output) Logs", command: "airdress.functions.logs" },
+        {
+          label: "$(history) Versions",
+          description: live?.serving
+            ? `serving ${shortDigest(live.serving)}`
+            : undefined,
+          command: "airdress.functions.versions",
+        },
+        {
+          label: "$(diff) Show the difference with what runs",
+          command: "airdress.functions.source.showDifference",
+        },
+        {
+          label: "$(link-external) Show on the operator",
+          command: "airdress.functions.showOnOperator",
+        },
+        {
+          label: "$(refresh) Refresh",
+          command: "airdress.functions.refreshContext",
+        },
+      ];
+      if (ctx.manifestPath) {
+        items.splice(5, 0, {
+          label: "$(file-code) Open function.yaml",
+          description: "the grant, config and who may sign",
+          command: "vscode.open",
+          args: [vscode.Uri.file(ctx.manifestPath)],
+        });
+      }
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: `${ctx.name}${ctx.operator ? ` on ${ctx.operator}` : ""}`,
+      });
+      if (picked) {
+        await vscode.commands.executeCommand(
+          picked.command,
+          ...(picked.args ?? []),
+        );
+      }
+    }),
+
+    vscode.commands.registerCommand("airdress.functions.refreshContext", () => {
+      contexts.invalidateLive();
+      contexts.scheduleRefresh();
     }),
 
     vscode.commands.registerCommand(
@@ -429,12 +869,10 @@ export function registerFunctionCommands(
       async (target?: vscode.Uri) => {
         let checkout: Checkout | undefined;
         if (target instanceof vscode.Uri && target.scheme === "file") {
-          const inside = vscode.Uri.joinPath(target, "function.json");
-          checkout = await checkoutFor(inside);
-          if (!checkout) {
-            const root = await treeRootFor(inside);
-            checkout = root ? await adoptFolder(sourceDeps, root) : undefined;
-          }
+          checkout = await checkoutOfFile(
+            vscode.Uri.joinPath(target, "function.json"),
+            true,
+          );
         } else {
           checkout = await activeCheckout();
         }
@@ -453,7 +891,7 @@ export function registerFunctionCommands(
           (await allowAnotherSigner(signerDeps, row.profile, row.name)) ===
             "applied"
         ) {
-          deps.refreshResources();
+          await signersApplied(row.profile, row.name);
         }
       },
     ),
@@ -466,7 +904,7 @@ export function registerFunctionCommands(
           row &&
           (await removeSigner(signerDeps, row.profile, row.name)) === "applied"
         ) {
-          deps.refreshResources();
+          await signersApplied(row.profile, row.name);
         }
       },
     ),

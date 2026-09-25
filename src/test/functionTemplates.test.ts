@@ -464,8 +464,16 @@ suite("templates: panel messages", () => {
       { type: "fork", functionId: "x" },
     );
     assert.strictEqual(parseTemplatePanelMessage({ type: "fork" }), undefined);
-    assert.strictEqual(defaultFunctionId("relay-to-op2"), "relay-to-op2");
-    assert.strictEqual(defaultFunctionId(" a b "), "a-b");
+    // function.json's id is reverse-DNS; a plain name becomes local.<slug>.
+    assert.strictEqual(defaultFunctionId("relay-to-op2"), "local.relay-to-op2");
+    assert.strictEqual(defaultFunctionId(" a b "), "local.a-b");
+    assert.strictEqual(
+      defaultFunctionId("Co.Example.Hello"),
+      "co.example.hello",
+    );
+    assert.strictEqual(defaultFunctionId("2fa_check!"), "local.fn-2fa-check");
+    assert.strictEqual(defaultFunctionId("---"), "local.function");
+    assert.strictEqual(defaultFunctionId("my.fn_x"), "local.my-fn-x");
     assert.strictEqual(parseTemplatePanelMessage({ type: "grant" }), undefined);
     assert.strictEqual(parseTemplatePanelMessage("fork"), undefined);
   });

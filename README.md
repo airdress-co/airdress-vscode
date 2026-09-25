@@ -65,6 +65,21 @@ with schema validation and see the diff against what is actually running
   this workstation, or an enrolled machine) and "Remove Signer…" are
   each their own apply, shown before it is sent — never part of a
   Deploy.
+- **It knows when you are in a function.** Open any file under a
+  folder whose `function.json` is a source function and the editor
+  shows that function's tooling: Deploy and Validate in the editor
+  title (Logs, Versions and "Show on the Operator" under its "…"), a
+  status bar item with the version the operator runs — marked when it
+  is not the one `function.yaml` names, when it did not load, or when
+  your files differ from it — and lenses on `function.json`, the entry
+  file and `function.yaml`. The function is found from the repository
+  itself: `function.yaml` names it, and `airdress.functions.yaml` (the
+  map the CLI and the GitHub Action read) names its manifest and
+  operator, so a repository deployed from CI needs no setup and gets no
+  extra files. `function.json` and the map file are checked against
+  their schemas as you type, and each save runs the operator's dry run
+  (`airdress.functions.validateOnSave`, on by default). Changing who may
+  sign also writes the set into the committed `function.yaml`.
 - **Templates, with the grant left to you.** "Airdress: New Function
   from Template…" lists the operator's catalogue. A template's options
   are a form (a secret is named, never pasted); the grants it needs are

@@ -11,6 +11,7 @@ import {
 } from "./local";
 import { configEntries, forkFiles, type FormValues } from "./templates";
 import type { TemplateField } from "./templateTypes";
+import { defaultFunctionId } from "./templateProtocol";
 import { listTemplates, readTemplate, type Template } from "./wire";
 
 /**
@@ -247,7 +248,7 @@ export async function newSourceFunction(
   try {
     // The files as the operator serves them for this id: its placeholder
     // replaced by the operator, not by this editor.
-    template = await readTemplate(client, templateId, name);
+    template = await readTemplate(client, templateId, defaultFunctionId(name));
   } catch (err) {
     ui.error(
       start === "blank"
