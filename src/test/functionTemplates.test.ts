@@ -474,6 +474,20 @@ suite("templates: panel messages", () => {
     assert.strictEqual(defaultFunctionId("2fa_check!"), "local.fn-2fa-check");
     assert.strictEqual(defaultFunctionId("---"), "local.function");
     assert.strictEqual(defaultFunctionId("my.fn_x"), "local.my-fn-x");
+    // The same vectors as the CLI's `function_id_from_name` tests: both
+    // clients must derive the same id from the same name.
+    for (const [name, want] of [
+      ["e2e-hello", "local.e2e-hello"],
+      ["My Hook_2", "local.my-hook-2"],
+      ["co.airdress.relay", "co.airdress.relay"],
+      ["Relay.Webhook", "relay.webhook"],
+      ["9lives", "local.fn-9lives"],
+      ["___", "local.function"],
+      ["a.9-b", "local.a-9-b"],
+      ["tail-", "local.tail"],
+    ]) {
+      assert.strictEqual(defaultFunctionId(name), want, name);
+    }
     assert.strictEqual(parseTemplatePanelMessage({ type: "grant" }), undefined);
     assert.strictEqual(parseTemplatePanelMessage("fork"), undefined);
   });
