@@ -2,6 +2,7 @@ import { ApiError } from "../api/client";
 import type { components } from "../api/generated/operator";
 import type { Profile } from "../profiles/model";
 import { clientFor, type ManifestDeps } from "../manifests/diff";
+import { sourceListing, type SourceListing } from "../functions/source";
 import type {
   EnrollmentMeta,
   PrincipalMeta,
@@ -237,6 +238,13 @@ export function liveFetchers(deps: ManifestDeps): TreeFetchers {
         }
         throw err;
       }
+    },
+
+    async listSourceFiles(
+      profile: Profile,
+      name: string,
+    ): Promise<SourceListing> {
+      return sourceListing(clientFor(deps, profile), name);
     },
 
     async getStatus(

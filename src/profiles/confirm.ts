@@ -86,6 +86,48 @@ export function revokeEnrollmentConfirm(
   return `Revoke enrollment${label} (${enrollment.id}) on ${targetPhrase(profile)}?`;
 }
 
+/**
+ * Function source: publish a tree. Publishing stores a version and runs
+ * nothing, and the prompt says so — the write that changes what runs is
+ * still the apply.
+ */
+export function publishSourceConfirm(
+  name: string,
+  profile: Pick<Profile, "label" | "fqdn">,
+): string {
+  return (
+    `Publish the source of ${name} to ${targetPhrase(profile)}? ` +
+    "This stores a new version; nothing runs it until the Function " +
+    "manifest names it and is applied."
+  );
+}
+
+/** Function source: take the served version as this edit's base. */
+export function rebaseSourceConfirm(
+  name: string,
+  version: string,
+  profile: Pick<Profile, "label" | "fqdn">,
+): string {
+  return (
+    `Base this edit of ${name} on ${version}, the version it serves on ` +
+    `${targetPhrase(profile)}? A publish from this folder then replaces ` +
+    "that version's tree with this one — read the difference first."
+  );
+}
+
+/** Templates: publish a template's tree as a new function. */
+export function publishTemplateConfirm(
+  templateTitle: string,
+  name: string,
+  profile: Pick<Profile, "label" | "fqdn">,
+): string {
+  return (
+    `Publish "${templateTitle}" as ${name} to ${targetPhrase(profile)}? ` +
+    "This stores its source as a version; nothing runs until you apply the " +
+    "manifest the editor drafts next."
+  );
+}
+
 /** Whether a prompt names its target the way this module promises. */
 export function namesTarget(
   text: string,

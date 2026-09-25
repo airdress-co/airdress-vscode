@@ -129,6 +129,35 @@
       {
         "command": "airdress.selector.refresh",
         "title": "Airdress: Refresh Airdress State"
+      },
+      {
+        "command": "airdress.functions.source.openFile",
+        "title": "Airdress: Open Served Function File"
+      },
+      {
+        "command": "airdress.functions.source.edit",
+        "title": "Airdress: Edit Function Source",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "airdress.functions.source.validate",
+        "title": "Airdress: Check Function Source"
+      },
+      {
+        "command": "airdress.functions.source.publish",
+        "title": "Airdress: Publish Function Source"
+      },
+      {
+        "command": "airdress.functions.source.showDifference",
+        "title": "Airdress: Show Function Source Difference"
+      },
+      {
+        "command": "airdress.functions.source.rebase",
+        "title": "Airdress: Base Function Source on the Served Version"
+      },
+      {
+        "command": "airdress.functions.fromTemplate",
+        "title": "Airdress: New Function from Template…"
       }
     ],
     "viewsContainers": {
@@ -210,6 +239,14 @@
         {
           "command": "airdress.resources.delete",
           "when": "false"
+        },
+        {
+          "command": "airdress.functions.source.openFile",
+          "when": "false"
+        },
+        {
+          "command": "airdress.functions.source.edit",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -279,6 +316,16 @@
           "command": "airdress.resources.delete",
           "when": "view == airdress.resources && viewItem =~ /^airdressResource/",
           "group": "9_destructive@1"
+        },
+        {
+          "command": "airdress.functions.source.edit",
+          "when": "view == airdress.resources && viewItem == airdressResource.Function",
+          "group": "1_actions@0"
+        },
+        {
+          "command": "airdress.functions.source.edit",
+          "when": "view == airdress.resources && viewItem == airdressSourceFile",
+          "group": "inline"
         }
       ]
     },
@@ -349,6 +396,16 @@
           "type": "string",
           "default": "https://docs.airdress.co/operator/owner-token-recovery",
           "description": "Where the break-glass indicator links. Getting off a break-glass credential is documented there."
+        },
+        "airdress.functions.signingKeyFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the Ed25519 seed the editor signs function source with: 64 hex characters, or the `seed=` line `airdress-operator functions keygen` prints. Read at each publish and never stored. Empty publishes unsigned, which an operator accepts only when it allows unsigned source."
+        },
+        "airdress.functions.signerMachine": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Name the signer as an approved machine (`signerRef.machine`) instead of by its key. The seed in `airdress.functions.signingKeyFile` must be that machine's registered source-signing key."
         }
       }
     },

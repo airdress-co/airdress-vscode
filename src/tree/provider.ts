@@ -134,7 +134,9 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
       case "resource": {
         const item = new vscode.TreeItem(
           node.resource.name,
-          vscode.TreeItemCollapsibleState.None,
+          this.hasChildren(node)
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.None,
         );
         if (node.status) {
           item.description = node.status.state;
@@ -152,6 +154,31 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
         item.command = {
           command: "airdress.resources.open",
           title: "Open Live Manifest (read-only)",
+          arguments: [node],
+        };
+        return item;
+      }
+      case "sourceFile": {
+        const item = new vscode.TreeItem(
+          node.path,
+          vscode.TreeItemCollapsibleState.None,
+        );
+        item.description = `${node.bytes} B`;
+        item.iconPath = new vscode.ThemeIcon(
+          node.importedFrom ? "lock" : "file-code",
+        );
+        item.contextValue = node.importedFrom
+          ? "airdressSourceFile.imported"
+          : "airdressSourceFile";
+        item.tooltip = [
+          `${node.function} @ ${node.version}`,
+          node.importedFrom
+            ? `Imported from ${node.importedFrom} — read-only to the editor`
+            : "The served version, read-only. Edit Function Source to change it.",
+        ].join("\n");
+        item.command = {
+          command: "airdress.functions.source.openFile",
+          title: "Open Served File",
           arguments: [node],
         };
         return item;
@@ -220,6 +247,11 @@ abstract class BaseTreeProvider implements vscode.TreeDataProvider<TreeNodeData>
         return item;
       }
     }
+  }
+
+  /** Whether a resource row expands (Function rows list their source). */
+  protected hasChildren(_node: TreeNodeData): boolean {
+    return false;
   }
 
   protected isKnownKind(kind: string): boolean {
@@ -330,6 +362,14 @@ export class ResourcesTreeProvider extends BaseTreeProvider {
     super();
   }
 
+  protected override hasChildren(node: TreeNodeData): boolean {
+    return (
+      node.type === "resource" &&
+      node.resource.kind === "Function" &&
+      this.fetchers?.listSourceFiles !== undefined
+    );
+  }
+
   private activeProfile() {
     const id = this.profiles.activeId();
     return id ? this.profiles.get(id) : undefined;
@@ -400,6 +440,39 @@ export class ResourcesTreeProvider extends BaseTreeProvider {
             this.onStatusesObserved?.();
           }
           return nodes;
+        }
+        case "resource": {
+          if (!this.hasChildren(node) || !this.fetchers.listSourceFiles) {
+            return [];
+          }
+          const listing = await this.fetchers.listSourceFiles(
+            node.profile,
+            node.resource.name,
+          );
+          if (listing.kind === "none") {
+            return [{ type: "message", icon: "info", text: listing.reason }];
+          }
+          const files: TreeNodeData[] = listing.files.map((f) => ({
+            type: "sourceFile",
+            profile: node.profile,
+            function: node.resource.name,
+            version: listing.version,
+            path: f.path,
+            bytes: f.bytes,
+            importedFrom: listing.importedFrom,
+          }));
+          return listing.importedFrom
+            ? [
+                {
+                  type: "message",
+                  icon: "lock",
+                  // A fact about ownership, not an error: configuration
+                  // management publishes this one.
+                  text: `Imported from ${listing.importedFrom} — managed outside the editor`,
+                },
+                ...files,
+              ]
+            : files;
         }
         case "section": {
           if (node.section !== "enrollments") {

@@ -19,8 +19,9 @@ import {
  * path from a save event to an apply anywhere in this extension —
  * autosave, formatters, and other extensions all trigger saves, and a
  * mutation of live configuration must never ride on an event the user
- * does not control. A test asserts the shipped bundle registers no
- * save listener.
+ * does not control. A test asserts the shipped bundle registers exactly
+ * one save listener — function source's dry run, which stores nothing
+ * and applies nothing.
  *
  * Validate is a DIFFERENT command with different consequences: it runs
  * the bundled schema validation and reports diagnostics, and has no

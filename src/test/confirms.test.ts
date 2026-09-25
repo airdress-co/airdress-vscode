@@ -6,6 +6,9 @@ import {
   deleteResourceConfirm,
   deleteResourcePrompt,
   namesTarget,
+  publishSourceConfirm,
+  publishTemplateConfirm,
+  rebaseSourceConfirm,
   revokeEnrollmentConfirm,
   revokeSubUserTitle,
   targetPhrase,
@@ -71,6 +74,12 @@ suite("every write-guarding prompt names its target", () => {
       "attach identity",
       bindIdentityPrompt("https://issuer.test", "bob", PROFILE),
     ],
+    ["publish function source", publishSourceConfirm("relay", PROFILE)],
+    [
+      "rebase function source",
+      rebaseSourceConfirm("relay", "sha256:ab", PROFILE),
+    ],
+    ["publish a template", publishTemplateConfirm("Hello", "hello", PROFILE)],
   ];
   for (const [what, text] of cases) {
     test(`${what} names the target`, () => {

@@ -24,15 +24,24 @@ export interface Problem {
   error?: string;
   /** JSON path of the offending field from the `{error, path}` shape. */
   path?: string;
+  /** Human sentence from the `{error, message}` shape, verbatim. */
+  message?: string;
 }
 
 export class ApiError extends Error {
   constructor(
     readonly problem: Problem,
     readonly httpStatus: number,
+    /**
+     * The decoded body, whole. Some refusals carry more than a Problem
+     * has fields for (a function source refusal's `locations`, a stale
+     * base's `current`); callers that know the route decode it.
+     */
+    readonly body?: unknown,
   ) {
     super(
       problem.title ??
+        problem.message ??
         problem.error ??
         `Operator API error (HTTP ${httpStatus})`,
     );
@@ -74,6 +83,7 @@ export function parseProblem(body: unknown, httpStatus: number): Problem {
       instance: typeof p.instance === "string" ? p.instance : undefined,
       error: typeof p.error === "string" ? p.error : undefined,
       path: typeof p.path === "string" ? p.path : undefined,
+      message: typeof p.message === "string" ? p.message : undefined,
     };
   }
   return { status: httpStatus };
@@ -146,7 +156,11 @@ export class ApiClient {
       if (response.status === 401) {
         this.opts.onUnauthorized?.();
       }
-      throw new ApiError(parseProblem(body, response.status), response.status);
+      throw new ApiError(
+        parseProblem(body, response.status),
+        response.status,
+        body,
+      );
     }
     return response;
   }

@@ -1,0 +1,72 @@
+/*
+ * Function template panel — additions to function-panel.css, which it
+ * loads first. Theme colours come from VS Code's own variables.
+ */
+
+.muted,
+.hint {
+  color: var(--vscode-descriptionForeground);
+}
+
+.hint {
+  font-size: 0.9em;
+  margin: 0.25rem 0 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0 0 var(--gap);
+}
+
+.field input[type="text"],
+.field input[type="number"] {
+  max-width: 32rem;
+  padding: 0.25rem 0.4rem;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: var(--radius);
+}
+
+pre.yaml {
+  font-family: var(--vscode-editor-font-family);
+  background: var(--vscode-textCodeBlock-background);
+  padding: var(--gap);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.actions {
+  display: flex;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+
+button {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+}
+
+button.secondary {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.result.ok {
+  color: var(--vscode-testing-iconPassed);
+}
+
+.result.error {
+  color: var(--vscode-errorForeground);
+}

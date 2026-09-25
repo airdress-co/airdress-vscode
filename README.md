@@ -38,6 +38,19 @@ with schema validation and see the diff against what is actually running
   has: the `POST /fn/<name>` trigger with a test invoke, and the bundle
   on the operator's disk. Open it from a Function row's gear, or draft
   one with "Airdress: New Function…".
+- **Function source, edited where it runs.** A source Function's row
+  lists the files it serves; click one to read it. "Edit Function
+  Source" copies them into a folder, and every save there is checked by
+  the operator's own dry run — a refusal lands as a marker on the line
+  it names. "Airdress: Publish Function Source" stores a version based
+  on the one you read; if the function moved meanwhile, you are shown
+  the difference, never retried over it. A function whose source is
+  imported by configuration management says so and stays read-only.
+- **Templates, with the grant left to you.** "Airdress: New Function
+  from Template…" lists the operator's catalogue. A template's options
+  are a form (a secret is named, never pasted); the grants it needs are
+  shown as YAML to add, and never written for you. Or fork its code
+  into a folder, as ordinary source that no longer refers to it.
 
 Works in VS Code and, via Open VSX, in VSCodium and other open builds.
 
@@ -72,6 +85,11 @@ F5, or isolated from your daily profile via the command line — see
 - `src/api/` — fetch wrapper + RFC 7807 parsing; `generated/` is checked in.
 - `src/manifests/` — schemas, Ajv diagnostics, live-diff flow.
 - `src/tree/` — resources tree provider.
+- `src/functions/` — function source and templates: `wire.ts` the
+  routes, `local.ts` the folder and the signature, `source.ts` the
+  editing loop, `diagnostics.ts` refusals as markers, `templates.ts`
+  the form and the grant suggestion (pure), `templatePanel.ts` +
+  `browser/templateForm.ts` → `dist/templateForm.js`.
 - `src/selector/` — the Airdress view: `protocol.ts` shared by both
   bundles, `controller.ts` behind a host seam, `view.ts` the
   WebviewView, `browser/main.ts` → `dist/selector.js`.
