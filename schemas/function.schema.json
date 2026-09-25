@@ -606,6 +606,35 @@
                 "null"
               ]
             },
+            "signers": {
+              "description": "Who may sign this function's source: a set of keys and approved machines, any one of which suffices — so an editor's key and a CI machine can both deploy the same function. Mutually exclusive with signer and signerRef. One to 16 members, each listed once (the operator refuses anything else by name). Changing the set is an apply by the owner; promote never changes it.",
+              "items": {
+                "additionalProperties": false,
+                "description": "A signer: exactly one of key (an Ed25519 public key) and machine (an approved machine's name or id).",
+                "properties": {
+                  "key": {
+                    "description": "An Ed25519 public key, 64 hex characters.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "machine": {
+                    "description": "An approved machine, by name or id; any of its registered source-signing keys that is not revoked as compromised.",
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "version": {
               "description": "A published version in this operator's store, as sha256: followed by 64 lowercase hex characters. Rolling back is applying the manifest with an earlier version.",
               "pattern": "^sha256:[0-9a-f]{64}$",
@@ -706,5 +735,5 @@
   ],
   "title": "Airdress operator Function manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.88"
+  "x-airdress-operator-version": "v0.1.89"
 }
