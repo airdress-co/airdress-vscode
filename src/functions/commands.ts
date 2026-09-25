@@ -255,13 +255,50 @@ export function registerFunctionCommands(
         .get<number>("deployWaitSeconds", 60) * 1000,
   };
   const deploy = async (checkout: Checkout) => {
-    const outcome = await vscode.window.withProgress(
+    // The progress covers the work, not the person reading its result: it
+    // ends at the first message, and a message with no buttons is shown
+    // without waiting for it to be dismissed. Before, the spinner, the
+    // command and the live-state refresh all waited on the closing toast.
+    let end: () => void = () => undefined;
+    const working = new Promise<void>((resolve) => {
+      end = resolve;
+    });
+    void vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Window,
         title: `Deploying ${checkout.record.function}`,
       },
-      () => deployCheckout(deployDeps, checkout),
+      () => working,
     );
+    const ui = deployDeps.ui;
+    const handed: DeployDeps = {
+      ...deployDeps,
+      ui: {
+        ...ui,
+        info: (message, ...actions) => {
+          end();
+          if (actions.length === 0) {
+            void ui.info(message);
+            return Promise.resolve(undefined);
+          }
+          return ui.info(message, ...actions);
+        },
+        warn: (message, ...actions) => {
+          end();
+          return ui.warn(message, ...actions);
+        },
+        error: (message) => {
+          end();
+          ui.error(message);
+        },
+      },
+    };
+    let outcome;
+    try {
+      outcome = await deployCheckout(handed, checkout);
+    } finally {
+      end();
+    }
     if (outcome.kind === "deployed" || outcome.kind === "unchanged") {
       deps.refreshResources();
     }
