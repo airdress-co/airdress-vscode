@@ -35,6 +35,8 @@ export interface CheckoutRecord {
   readonly basedOn: string | null;
   /** Versions this folder published, newest last. */
   readonly published?: readonly string[];
+  /** The template the folder was made from, for the create prompt only. */
+  readonly template?: string;
 }
 
 /** A folder with a checkout record. */
@@ -73,6 +75,7 @@ export function parseCheckoutRecord(text: string): CheckoutRecord | undefined {
     published: Array.isArray(v.published)
       ? v.published.filter((p): p is string => typeof p === "string")
       : undefined,
+    template: typeof v.template === "string" ? v.template : undefined,
   };
 }
 
@@ -281,6 +284,11 @@ export interface SigningChoice {
   readonly key?: SourceSigningKey;
   /** Name the signer as an approved machine instead of a key. */
   readonly machine?: string;
+  /**
+   * Where the key came from: a file named in settings, or the key this
+   * workstation keeps in its keychain. Said in prompts, never the key.
+   */
+  readonly origin?: "file" | "keychain";
 }
 
 /**

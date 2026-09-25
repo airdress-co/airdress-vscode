@@ -55,10 +55,10 @@ export interface ActionResult {
 /** How the manifest names the signer the editor signs with. */
 export function signerNaming(signing: SigningChoice): SignerNaming {
   if (signing.machine) {
-    return { signerRef: { machine: signing.machine } };
+    return { signers: [{ machine: signing.machine }] };
   }
   if (signing.key) {
-    return { signer: signing.key.publicKeyHex };
+    return { signers: [{ key: signing.key.publicKeyHex }] };
   }
   return {};
 }

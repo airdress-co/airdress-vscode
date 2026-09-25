@@ -142,10 +142,16 @@ export const GRANT_EXPLANATION =
   "that slipped it into a manifest would decide for you. Read it, then add " +
   "it under spec in the manifest yourself.";
 
-/** Who signed, as the manifest names it. */
+/**
+ * Who may sign, as the manifest names it: always the set form. The
+ * single forms (`signer`, `signerRef`) are still read, never written.
+ */
 export type SignerNaming =
-  | { readonly signer: string }
-  | { readonly signerRef: { readonly machine: string } }
+  | {
+      readonly signers: ReadonlyArray<
+        { readonly key: string } | { readonly machine: string }
+      >;
+    }
   | Record<string, never>;
 
 /**

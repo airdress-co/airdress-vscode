@@ -461,8 +461,31 @@ export class ResourcesTreeProvider extends BaseTreeProvider {
             bytes: f.bytes,
             importedFrom: listing.importedFrom,
           }));
+          // Who may deploy this function, and who deployed what runs:
+          // visible on the function, not only in its manifest.
+          const signers: TreeNodeData[] = [
+            ...(listing.signers !== undefined
+              ? [
+                  {
+                    type: "message" as const,
+                    icon: "key",
+                    text: `May sign: ${listing.signers}`,
+                  },
+                ]
+              : []),
+            ...(listing.runningSigner !== undefined
+              ? [
+                  {
+                    type: "message" as const,
+                    icon: "verified",
+                    text: `Running version signed by ${listing.runningSigner}`,
+                  },
+                ]
+              : []),
+          ];
           return listing.importedFrom
             ? [
+                ...signers,
                 {
                   type: "message",
                   icon: "lock",
@@ -472,7 +495,7 @@ export class ResourcesTreeProvider extends BaseTreeProvider {
                 },
                 ...files,
               ]
-            : files;
+            : [...signers, ...files];
         }
         case "section": {
           if (node.section !== "enrollments") {

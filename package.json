@@ -158,6 +158,23 @@
       {
         "command": "airdress.functions.fromTemplate",
         "title": "Airdress: New Function from Template…"
+      },
+      {
+        "command": "airdress.functions.deploy",
+        "title": "Airdress: Deploy Function",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "airdress.functions.signers.allow",
+        "title": "Airdress: Allow Another Signer…"
+      },
+      {
+        "command": "airdress.functions.signers.remove",
+        "title": "Airdress: Remove Signer…"
+      },
+      {
+        "command": "airdress.functions.signingKey.export",
+        "title": "Airdress: Export Signing Key…"
       }
     ],
     "viewsContainers": {
@@ -247,6 +264,14 @@
         {
           "command": "airdress.functions.source.edit",
           "when": "false"
+        },
+        {
+          "command": "airdress.functions.signers.allow",
+          "when": "false"
+        },
+        {
+          "command": "airdress.functions.signers.remove",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -326,6 +351,23 @@
           "command": "airdress.functions.source.edit",
           "when": "view == airdress.resources && viewItem == airdressSourceFile",
           "group": "inline"
+        },
+        {
+          "command": "airdress.functions.signers.allow",
+          "when": "view == airdress.resources && viewItem == airdressResource.Function",
+          "group": "2_signers@1"
+        },
+        {
+          "command": "airdress.functions.signers.remove",
+          "when": "view == airdress.resources && viewItem == airdressResource.Function",
+          "group": "2_signers@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "airdress.functions.deploy",
+          "when": "explorerResourceIsFolder",
+          "group": "airdress@1"
         }
       ]
     },
@@ -400,12 +442,18 @@
         "airdress.functions.signingKeyFile": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to the Ed25519 seed the editor signs function source with: 64 hex characters, or the `seed=` line `airdress-operator functions keygen` prints. Read at each publish and never stored. Empty publishes unsigned, which an operator accepts only when it allows unsigned source."
+          "markdownDescription": "Path to an Ed25519 key file to sign function source with: 64 hex characters, or the `seed=` line `airdress-operator functions keygen` prints. Read at each use and never stored. Empty uses the key this workstation keeps in its keychain, which Deploy creates the first time it needs one (see **Airdress: Export Signing Key…** to use it from the command line)."
         },
         "airdress.functions.signerMachine": {
           "type": "string",
           "default": "",
           "markdownDescription": "Name the signer as an approved machine (`signerRef.machine`) instead of by its key. The seed in `airdress.functions.signingKeyFile` must be that machine's registered source-signing key."
+        },
+        "airdress.functions.deployWaitSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 5,
+          "markdownDescription": "How long Deploy waits for a function to report its new version loaded. The first function after an operator restart compiles the engine, which takes about 15 seconds."
         }
       }
     },
