@@ -80,15 +80,31 @@ export function parseTemplatePanelMessage(
   }
 }
 
+/** The pattern the operator's `function.json` schema holds `id` to. */
+export const FUNCTION_ID_PATTERN = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
+
 /**
- * The function id offered before the author types one: the function's
- * name, cut to what the operator accepts for `functionId` (1 to 128
- * letters, digits, dots, hyphens or underscores). The author can change
- * it; the operator is the one that validates it.
+ * The function id offered before the author types one. `function.json`'s
+ * `id` is reverse-DNS — at least two dot-joined lowercase labels — so a
+ * name that already is one is kept, and any other becomes
+ * `local.<slug>`: lowercased, every run of other characters one dash,
+ * dashes trimmed, `fn-` in front of a slug that does not start with a
+ * letter. The CLI's `fn new` derives the same id from a folder name. The
+ * author can change it; the operator is the one that validates it.
  */
 export function defaultFunctionId(name: string): string {
-  return name
-    .trim()
-    .replace(/[^A-Za-z0-9._-]/g, "-")
-    .slice(0, 128);
+  const lower = name.trim().toLowerCase();
+  if (FUNCTION_ID_PATTERN.test(lower) && lower.length <= 255) {
+    return lower;
+  }
+  let slug = lower
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (slug === "") {
+    slug = "function";
+  } else if (!/^[a-z]/.test(slug)) {
+    slug = `fn-${slug}`;
+  }
+  return `local.${slug}`.slice(0, 255).replace(/-+$/, "");
 }

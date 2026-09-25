@@ -17,7 +17,9 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onUri"
+    "onUri",
+    "workspaceContains:**/function.json",
+    "workspaceContains:**/airdress.functions.yaml"
   ],
   "contributes": {
     "commands": [
@@ -141,7 +143,8 @@
       },
       {
         "command": "airdress.functions.source.validate",
-        "title": "Airdress: Check Function Source"
+        "title": "Airdress: Check Function Source",
+        "icon": "$(check)"
       },
       {
         "command": "airdress.functions.source.publish",
@@ -175,6 +178,30 @@
       {
         "command": "airdress.functions.signingKey.export",
         "title": "Airdress: Export Signing Key…"
+      },
+      {
+        "command": "airdress.functions.logs",
+        "title": "Airdress: Show Function Log",
+        "icon": "$(output)"
+      },
+      {
+        "command": "airdress.functions.versions",
+        "title": "Airdress: Function Versions…",
+        "icon": "$(history)"
+      },
+      {
+        "command": "airdress.functions.showOnOperator",
+        "title": "Airdress: Show Function on the Operator",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "airdress.functions.actions",
+        "title": "Airdress: Function Actions…"
+      },
+      {
+        "command": "airdress.functions.refreshContext",
+        "title": "Airdress: Refresh Function State",
+        "icon": "$(refresh)"
       }
     ],
     "viewsContainers": {
@@ -272,6 +299,26 @@
         {
           "command": "airdress.functions.signers.remove",
           "when": "false"
+        },
+        {
+          "command": "airdress.functions.logs",
+          "when": "airdress.inFunction"
+        },
+        {
+          "command": "airdress.functions.versions",
+          "when": "airdress.inFunction"
+        },
+        {
+          "command": "airdress.functions.showOnOperator",
+          "when": "airdress.inFunction"
+        },
+        {
+          "command": "airdress.functions.actions",
+          "when": "airdress.inFunction"
+        },
+        {
+          "command": "airdress.functions.refreshContext",
+          "when": "airdress.inFunction"
         }
       ],
       "view/title": [
@@ -369,6 +416,50 @@
           "when": "explorerResourceIsFolder",
           "group": "airdress@1"
         }
+      ],
+      "editor/title": [
+        {
+          "command": "airdress.functions.deploy",
+          "when": "airdress.inFunction && resourceScheme == file",
+          "group": "navigation@1"
+        },
+        {
+          "command": "airdress.functions.source.validate",
+          "when": "airdress.inFunction && resourceScheme == file",
+          "group": "navigation@2"
+        },
+        {
+          "command": "airdress.functions.logs",
+          "when": "airdress.inFunction && resourceScheme == file",
+          "group": "airdress@1"
+        },
+        {
+          "command": "airdress.functions.versions",
+          "when": "airdress.inFunction && resourceScheme == file",
+          "group": "airdress@2"
+        },
+        {
+          "command": "airdress.functions.showOnOperator",
+          "when": "airdress.inFunction && resourceScheme == file",
+          "group": "airdress@3"
+        },
+        {
+          "command": "airdress.functions.refreshContext",
+          "when": "airdress.inFunction && resourceScheme == file",
+          "group": "airdress@4"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "airdress.functions.deploy",
+          "when": "airdress.inFunction && resourceScheme == file",
+          "group": "airdress@1"
+        },
+        {
+          "command": "airdress.functions.source.validate",
+          "when": "airdress.inFunction && resourceScheme == file",
+          "group": "airdress@2"
+        }
       ]
     },
     "configuration": {
@@ -454,6 +545,11 @@
           "default": 60,
           "minimum": 5,
           "markdownDescription": "How long Deploy waits for a function to report its new version loaded. The first function after an operator restart compiles the engine, which takes about 15 seconds."
+        },
+        "airdress.functions.validateOnSave": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Check a function's source with the operator's dry run whenever a file under its `function.json` or `src/` is saved. Nothing is stored; refusals appear in Problems at their lines. Runs only when a signed-in profile resolves for the function's operator."
         }
       }
     },
@@ -465,6 +561,10 @@
       {
         "fileMatch": "*.airdress.yml",
         "url": "./schemas/operator-manifest.schema.json"
+      },
+      {
+        "fileMatch": "airdress.functions.yaml",
+        "url": "./schemas/functions-layout.schema.json"
       }
     ],
     "jsonValidation": [

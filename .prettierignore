@@ -5,6 +5,9 @@ src/api/generated/
 # Generated: synced byte-for-byte from schemas.airdress.co pinned artifacts
 src/manifests/schemas/*.json
 schemas/*.schema.json
+# Vendored byte-for-byte: function.json's schema from the operator, the
+# map file's from the CLI (see CONTRIBUTING.md)
+src/functions/schemas/*.json
 !schemas/fleet-manifest.schema.json
 !schemas/operator-manifest.schema.json
 *.vsix

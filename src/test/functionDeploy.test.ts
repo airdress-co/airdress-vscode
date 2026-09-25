@@ -1287,13 +1287,13 @@ suite("the + on Function: template-first", () => {
     // Only reads: nothing is sent until Deploy.
     assert.deepStrictEqual(
       h.calls.map((c) => `${c.method} ${c.path}`),
-      ["GET /v1/functions/templates/blank?functionId=my-fn"],
+      ["GET /v1/functions/templates/blank?functionId=local.my-fn"],
     );
     const root = checkout.root.fsPath;
     assert.strictEqual(root, path.join(h.scratch, "my-fn"));
     assert.match(
       fs.readFileSync(path.join(root, "src", "main.ts"), "utf8"),
-      /hello from my-fn/,
+      /hello from local\.my-fn/,
     );
     assert.deepStrictEqual(
       parseOwnerManifest(
@@ -1325,7 +1325,7 @@ suite("the + on Function: template-first", () => {
       h.calls.map((c) => `${c.method} ${c.path}`),
       [
         "GET /v1/functions/templates",
-        "GET /v1/functions/templates/hello?functionId=my-fn",
+        "GET /v1/functions/templates/hello?functionId=local.my-fn",
       ],
     );
     const spec = parseOwnerManifest(

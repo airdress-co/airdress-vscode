@@ -37,6 +37,16 @@ as `DRIFT`. CI runs the same check. An unreachable upstream is a loud
 skip, not a failure — a hook that blocks commits on a network flake gets
 disabled, and then catches nothing.
 
+Two schemas are **vendored**, not synced, because nothing publishes
+them at `schemas.airdress.co` yet: `function.json`'s
+(`schemas/function-source.schema.json`, copied from the operator's
+`crates/airdress-fn/schema/function-v1.schema.json` at the release the
+Kind schemas are pinned to) and the map file's
+(`schemas/functions-layout.schema.json`, what `airdress fn
+layout-schema` prints). Each has a bundled twin under
+`src/functions/schemas/`; a test holds the pairs byte-identical. Copy
+both bytes again when the operator or the CLI changes them.
+
 Only if the Kind carries an affordance plain CRUD does not — the way
 `Function` has an invoke trigger and a bundle on disk — does it get an
 entry in `src/webview/kinds.ts`. That table is deliberately closed and
