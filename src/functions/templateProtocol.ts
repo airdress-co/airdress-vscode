@@ -24,9 +24,11 @@ export type TemplatePanelMessage =
   | {
       readonly type: "create";
       readonly name: string;
+      /** The id written into `function.json` in place of the placeholder. */
+      readonly functionId: string;
       readonly values: FormValues;
     }
-  | { readonly type: "fork" }
+  | { readonly type: "fork"; readonly functionId: string }
   | { readonly type: "copyGrant" };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -46,11 +48,18 @@ export function parseTemplatePanelMessage(
   }
   switch (v.type) {
     case "ready":
-    case "fork":
     case "copyGrant":
       return { type: v.type };
+    case "fork":
+      return typeof v.functionId === "string"
+        ? { type: "fork", functionId: v.functionId }
+        : undefined;
     case "create": {
-      if (typeof v.name !== "string" || !isRecord(v.values)) {
+      if (
+        typeof v.name !== "string" ||
+        typeof v.functionId !== "string" ||
+        !isRecord(v.values)
+      ) {
         return undefined;
       }
       const values: Record<string, string | boolean> = {};
@@ -59,9 +68,27 @@ export function parseTemplatePanelMessage(
           values[k] = val;
         }
       }
-      return { type: "create", name: v.name, values };
+      return {
+        type: "create",
+        name: v.name,
+        functionId: v.functionId,
+        values,
+      };
     }
     default:
       return undefined;
   }
+}
+
+/**
+ * The function id offered before the author types one: the function's
+ * name, cut to what the operator accepts for `functionId` (1 to 128
+ * letters, digits, dots, hyphens or underscores). The author can change
+ * it; the operator is the one that validates it.
+ */
+export function defaultFunctionId(name: string): string {
+  return name
+    .trim()
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .slice(0, 128);
 }

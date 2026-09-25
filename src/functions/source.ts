@@ -13,11 +13,13 @@ import {
   MANIFEST_FILE,
   publishBody,
   readCheckout,
+  canonicalDigestString,
   readTree,
   sha256Hex,
   writeCheckout,
   type Checkout,
   type SigningChoice,
+  type SourceTree,
 } from "./local";
 import {
   isStaleBase,
@@ -340,6 +342,56 @@ async function openEntry(deps: SourceDeps, checkout: Checkout): Promise<void> {
   );
 }
 
+/** The operator's digest of a tree is not the one this editor computed. */
+export class DigestMismatchError extends Error {
+  constructor(
+    readonly local: string,
+    readonly served: string | undefined,
+  ) {
+    super(
+      served === undefined
+        ? "the operator did not say which digest a signature must cover (no sourceDigest in its answer), so the editor will not sign"
+        : `the operator digests this tree as ${served}, the editor as ${local}. ` +
+            "A signature over the editor's digest would not verify; nothing was signed.",
+    );
+    this.name = "DigestMismatchError";
+  }
+}
+
+/**
+ * Send a tree. Every send starts with an unsigned dry run, which the
+ * operator checks without verifying and which needs no key. A dry run
+ * stops there. A publish then holds the operator's `sourceDigest` to the
+ * locally computed one — they must be the same bytes the signature covers
+ * — and only then reads the signing key, signs, and sends for real.
+ */
+export async function publishTree(
+  client: ApiClient,
+  name: string,
+  basedOn: string | null,
+  tree: SourceTree,
+  signing: () => Promise<SigningChoice>,
+  opts: { dryRun: boolean },
+): Promise<SourcePublished> {
+  const checked = await publishSource(
+    client,
+    publishBody(name, basedOn, tree, {}),
+    { dryRun: true },
+  );
+  if (opts.dryRun) {
+    return checked;
+  }
+  const local = canonicalDigestString(tree);
+  if (checked.sourceDigest !== local) {
+    throw new DigestMismatchError(local, checked.sourceDigest);
+  }
+  return publishSource(
+    client,
+    publishBody(name, basedOn, tree, await signing()),
+    { dryRun: false },
+  );
+}
+
 /** Why a signing refusal happened, in terms of this editor's settings. */
 function signingHint(code: string): string {
   return code === "source_unsigned" ||
@@ -376,14 +428,9 @@ export async function publishCheckout(
     deps.ui.error(message);
     return { kind: "failed", message };
   }
-  let body;
+  let tree: SourceTree;
   try {
-    body = publishBody(
-      record.function,
-      record.basedOn,
-      await readTree(checkout.root),
-      await deps.signing(),
-    );
+    tree = await readTree(checkout.root);
   } catch (err) {
     const message = `Airdress: ${err instanceof Error ? err.message : String(err)}`;
     deps.ui.error(message);
@@ -400,8 +447,19 @@ export async function publishCheckout(
   }
   let published: SourcePublished;
   try {
-    published = await publishSource(deps.client(profile), body, opts);
+    published = await publishTree(
+      deps.client(profile),
+      record.function,
+      record.basedOn,
+      tree,
+      deps.signing,
+      opts,
+    );
   } catch (err) {
+    if (err instanceof DigestMismatchError) {
+      deps.ui.error(`Airdress: nothing was published — ${err.message}`);
+      return { kind: "failed", message: err.message };
+    }
     const refusal = refusalOf(err);
     if (isStaleBase(refusal)) {
       applyDiagnostics(deps.diagnostics, checkout.root, []);

@@ -51,6 +51,12 @@ export interface SourcePublished {
   readonly name: string;
   readonly files: readonly SourceFileEntry[];
   readonly entry: string;
+  /**
+   * The canonical digest (`sha256:<hex>`) a signature is made over. Every
+   * answer carries it, dry runs included; undefined only from an operator
+   * older than the field.
+   */
+  readonly sourceDigest?: string;
   readonly unreachable: readonly string[];
   readonly warnings: readonly string[];
   readonly dryRun: boolean;
@@ -75,6 +81,8 @@ export interface RefusalDenial {
 export interface SourceRefusal {
   /** Snake-case refusal code, e.g. `transpile_failed`. */
   readonly error: string;
+  /** The refusal's reason as the operator's conditions name it, e.g. `TranspileFailed`. */
+  readonly reason?: string;
   readonly message: string;
   readonly locations: readonly RefusalLocation[];
   readonly denials: readonly RefusalDenial[];
@@ -159,6 +167,7 @@ export function decodeRefusal(body: unknown): SourceRefusal | undefined {
   return {
     ...(body as object),
     error: body.error,
+    reason: typeof body.reason === "string" ? body.reason : undefined,
     message: typeof body.message === "string" ? body.message : body.error,
     locations,
     denials,
@@ -264,6 +273,8 @@ export async function publishSource(
     name: typeof out.name === "string" ? out.name : body.name,
     files: decodeFiles(out.files ?? [], `POST ${route}`),
     entry: typeof out.entry === "string" ? out.entry : "",
+    sourceDigest:
+      typeof out.sourceDigest === "string" ? out.sourceDigest : undefined,
     unreachable: Array.isArray(out.unreachable)
       ? out.unreachable.filter((u): u is string => typeof u === "string")
       : [],
@@ -307,12 +318,19 @@ export async function listTemplates(
   return body.templates.map((t) => decodeTemplate(t, `GET ${route}`));
 }
 
-/** `GET /v1/functions/templates/{id}`. */
+/**
+ * `GET /v1/functions/templates/{id}`. With `functionId`, the operator
+ * writes that id into the served `function.json` in place of the
+ * template's placeholder, so the files need no editing afterwards.
+ */
 export async function readTemplate(
   client: ApiClient,
   id: string,
+  functionId?: string,
 ): Promise<Template> {
-  const route = `/v1/functions/templates/${enc(id)}`;
+  const route = `/v1/functions/templates/${enc(id)}${
+    functionId ? `?functionId=${enc(functionId)}` : ""
+  }`;
   const body = await client.request<unknown>(route);
   const summary = decodeTemplate(body, `GET ${route}`);
   const files = (body as Record<string, unknown>).files;

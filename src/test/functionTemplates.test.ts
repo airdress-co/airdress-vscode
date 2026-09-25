@@ -6,7 +6,11 @@ import * as vscode from "vscode";
 import * as YAML from "yaml";
 import { ApiClient } from "../api/client";
 import type { Profile } from "../profiles/model";
-import { CHECKOUT_FILE, signingKeyFromSeedText } from "../functions/local";
+import {
+  canonicalDigestString,
+  CHECKOUT_FILE,
+  signingKeyFromSeedText,
+} from "../functions/local";
 import {
   capabilitiesSuggestion,
   configEntries,
@@ -21,7 +25,10 @@ import {
   type TemplateDeps,
   type TemplateUI,
 } from "../functions/templateFlows";
-import { parseTemplatePanelMessage } from "../functions/templateProtocol";
+import {
+  defaultFunctionId,
+  parseTemplatePanelMessage,
+} from "../functions/templateProtocol";
 import type { Template, TemplateField } from "../functions/wire";
 
 const PROFILE: Profile = {
@@ -56,7 +63,7 @@ const RELAY: Template = {
   },
   files: {
     "function.json":
-      '{"entry":"src/main.ts","runtime":"js-source/v1","capabilities":[{"name":"airdress:fn/http@0.1.0"}]}\n',
+      '{\n  "id": "example.function",\n  "entry": "src/main.ts",\n  "runtime": "js-source/v1",\n  "capabilities": [{ "name": "airdress:fn/http@0.1.0" }]\n}\n',
     "src/main.ts":
       "export default async (req: Request) => new Response('ok');\n",
   },
@@ -92,32 +99,67 @@ class FakeUI implements TemplateUI {
   error() {}
 }
 
+/** The template as the operator serves it for `functionId`. */
+function servedFor(functionId: string | null): Template {
+  if (!functionId) {
+    return RELAY;
+  }
+  return {
+    ...RELAY,
+    files: {
+      ...RELAY.files,
+      "function.json": RELAY.files["function.json"].replace(
+        '"id": "example.function"',
+        `"id": "${functionId}"`,
+      ),
+    },
+  };
+}
+
 function depsWith(
   ui: TemplateUI,
-  calls: Array<{ url: string; body: unknown }>,
+  calls: Array<{ method: string; url: string; body: unknown }>,
   seed?: string,
+  opts: { digest?: (tree: Map<string, Uint8Array>) => string } = {},
 ): TemplateDeps {
   const client = new ApiClient({
     baseUrl: "https://ada.a.airdr.es",
     getToken: async () => "bearer-1",
     fetchFn: (async (input: URL | string, init?: RequestInit) => {
-      calls.push({
-        url: String(input),
-        body: JSON.parse(String(init?.body ?? "null")),
-      });
-      const body = {
-        version: VERSION,
-        name: "relay",
-        files: [],
-        entry: "src/main.ts",
-        unreachable: [],
-        warnings: [],
-        dryRun: false,
-        created: true,
-      };
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      const sent = JSON.parse(String(init?.body ?? "null")) as {
+        files?: Array<{ path: string; contentBase64: string }>;
+      } | null;
+      calls.push({ method, url: String(input), body: sent });
+      let body: unknown;
+      if (method === "GET") {
+        body = servedFor(url.searchParams.get("functionId"));
+      } else {
+        const tree = new Map(
+          (sent?.files ?? []).map((f) => [
+            f.path,
+            new Uint8Array(Buffer.from(f.contentBase64, "base64")),
+          ]),
+        );
+        const dryRun = url.searchParams.get("dry-run") === "true";
+        body = {
+          version: VERSION,
+          name: "relay",
+          files: [],
+          entry: "src/main.ts",
+          sourceDigest: (opts.digest ?? canonicalDigestString)(tree),
+          unreachable: [],
+          warnings: dryRun
+            ? ["the tree is unsigned: checked, not verified."]
+            : [],
+          dryRun,
+          created: !dryRun,
+        };
+      }
       return {
         ok: true,
-        status: 201,
+        status: 200,
         json: async () => body,
       } as unknown as Response;
     }) as typeof fetch,
@@ -237,19 +279,43 @@ suite("templates: requires is shown as YAML, never written", () => {
   });
 
   test("publishing from the form sends a body with no grant, and drafts a manifest without one", async () => {
-    const calls: Array<{ url: string; body: unknown }> = [];
+    const calls: Array<{ method: string; url: string; body: unknown }> = [];
     const ui = new FakeUI();
     const result = await createFromTemplate(
       depsWith(ui, calls, "cd".repeat(32)),
       PROFILE,
       RELAY,
       "relay",
+      "com.example.relay",
       { token: "peer-token" },
     );
     assert.ok(result.ok, result.message);
-    assert.strictEqual(calls.length, 1);
-    assert.ok(calls[0].url.endsWith("/v1/functions/sources"));
-    const body = calls[0].body as Record<string, unknown>;
+    assert.deepStrictEqual(
+      calls.map(
+        (c) => `${c.method} ${new URL(c.url).pathname}${new URL(c.url).search}`,
+      ),
+      [
+        "GET /v1/functions/templates/webhook-relay?functionId=com.example.relay",
+        "POST /v1/functions/sources?dry-run=true",
+        "POST /v1/functions/sources",
+      ],
+    );
+    assert.ok(
+      !("signature" in (calls[1].body as object)),
+      "the check is unsigned",
+    );
+    const body = calls[2].body as Record<string, unknown>;
+    assert.ok(typeof body.signature === "string", "the publish is signed");
+    const manifest = Buffer.from(
+      (body.files as Array<{ path: string; contentBase64: string }>)[0]
+        .contentBase64,
+      "base64",
+    ).toString("utf8");
+    assert.strictEqual(
+      manifest,
+      servedFor("com.example.relay").files["function.json"],
+      "function.json is published as the operator served it for the id",
+    );
     assert.ok(!("capabilities" in body));
     assert.ok(!("spec" in body));
     assert.strictEqual(body.basedOn, undefined, "a new function has no base");
@@ -270,12 +336,35 @@ suite("templates: requires is shown as YAML, never written", () => {
     });
   });
 
+  test("a digest the operator disagrees with stops before signing or storing", async () => {
+    const calls: Array<{ method: string; url: string; body: unknown }> = [];
+    const ui = new FakeUI();
+    const result = await createFromTemplate(
+      depsWith(ui, calls, "cd".repeat(32), {
+        digest: () => `sha256:${"0".repeat(64)}`,
+      }),
+      PROFILE,
+      RELAY,
+      "relay",
+      "relay",
+      { token: "t" },
+    );
+    assert.strictEqual(result.ok, false);
+    assert.match(result.message, /nothing was signed/);
+    assert.deepStrictEqual(
+      calls.map((c) => c.method),
+      ["GET", "POST"],
+    );
+    assert.strictEqual(ui.drafts.length, 0);
+  });
+
   test("a required field left empty stops before any request", async () => {
-    const calls: Array<{ url: string; body: unknown }> = [];
+    const calls: Array<{ method: string; url: string; body: unknown }> = [];
     const result = await createFromTemplate(
       depsWith(new FakeUI(), calls),
       PROFILE,
       RELAY,
+      "relay",
       "relay",
       {},
     );
@@ -299,20 +388,29 @@ suite("templates: forking writes ordinary source", () => {
   test("the template's files, byte for byte, and nothing else", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "airdress-fork-"));
     const ui = new FakeUI(vscode.Uri.file(dir));
-    const result = await forkTemplate(depsWith(ui, []), RELAY);
+    const calls: Array<{ method: string; url: string; body: unknown }> = [];
+    const result = await forkTemplate(
+      depsWith(ui, calls),
+      PROFILE,
+      RELAY,
+      "com.example.relay",
+    );
     assert.ok(result.ok, result.message);
+    assert.ok(calls[0].url.endsWith("?functionId=com.example.relay"));
+    const served = servedFor("com.example.relay");
     assert.deepStrictEqual(
       listAll(dir).sort(),
-      Object.keys(RELAY.files).sort(),
+      Object.keys(served.files).sort(),
     );
-    for (const [p, content] of Object.entries(RELAY.files)) {
+    assert.ok(!served.files["function.json"].includes("example.function"));
+    for (const [p, content] of Object.entries(served.files)) {
       assert.strictEqual(fs.readFileSync(path.join(dir, p), "utf8"), content);
     }
     assert.ok(!fs.existsSync(path.join(dir, CHECKOUT_FILE)));
     for (const p of listAll(dir)) {
       assert.ok(
         !fs.readFileSync(path.join(dir, p), "utf8").includes(RELAY.id) ||
-          RELAY.files[p].includes(RELAY.id),
+          served.files[p].includes(RELAY.id),
         `${p} gained a reference to the template`,
       );
     }
@@ -322,10 +420,14 @@ suite("templates: forking writes ordinary source", () => {
   test("a folder that already holds a tree is refused, untouched", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "airdress-fork-"));
     fs.writeFileSync(path.join(dir, "function.json"), "{}");
+    const calls: Array<{ method: string; url: string; body: unknown }> = [];
     const result = await forkTemplate(
-      depsWith(new FakeUI(vscode.Uri.file(dir)), []),
+      depsWith(new FakeUI(vscode.Uri.file(dir)), calls),
+      PROFILE,
       RELAY,
+      "relay",
     );
+    assert.strictEqual(calls.length, 0);
     assert.strictEqual(result.ok, false);
     assert.deepStrictEqual(listAll(dir), ["function.json"]);
     assert.strictEqual(
@@ -346,13 +448,23 @@ suite("templates: panel messages", () => {
       parseTemplatePanelMessage({
         type: "create",
         name: "relay",
+        functionId: "com.example.relay",
         values: { a: "1", b: true, c: 3 },
       }),
-      { type: "create", name: "relay", values: { a: "1", b: true } },
+      {
+        type: "create",
+        name: "relay",
+        functionId: "com.example.relay",
+        values: { a: "1", b: true },
+      },
     );
-    assert.deepStrictEqual(parseTemplatePanelMessage({ type: "fork" }), {
-      type: "fork",
-    });
+    assert.deepStrictEqual(
+      parseTemplatePanelMessage({ type: "fork", functionId: "x" }),
+      { type: "fork", functionId: "x" },
+    );
+    assert.strictEqual(parseTemplatePanelMessage({ type: "fork" }), undefined);
+    assert.strictEqual(defaultFunctionId("relay-to-op2"), "relay-to-op2");
+    assert.strictEqual(defaultFunctionId(" a b "), "a-b");
     assert.strictEqual(parseTemplatePanelMessage({ type: "grant" }), undefined);
     assert.strictEqual(parseTemplatePanelMessage("fork"), undefined);
   });
