@@ -6,6 +6,19 @@ const vscode = require("vscode");
 const fs = require("node:fs");
 const path = require("node:path");
 let DIR;
+// JSON cannot carry a Uri: an argument written as {"$uri": "file:///…"}
+// is revived as one, at any depth.
+function revive(v) {
+  if (Array.isArray(v)) return v.map(revive);
+  if (v && typeof v === "object") {
+    if (typeof v.$uri === "string" && Object.keys(v).length === 1)
+      return vscode.Uri.parse(v.$uri);
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [k, revive(x)]),
+    );
+  }
+  return v;
+}
 function activate(context) {
   DIR =
     process.env.AIRDRESS_DEV_DRIVER_DIR ||
@@ -70,7 +83,7 @@ function activate(context) {
         } else {
           const p = vscode.commands.executeCommand(
             payload.command,
-            ...(payload.args ?? []),
+            ...revive(payload.args ?? []),
           );
           const timeout = new Promise((r) =>
             setTimeout(() => r({ pending: true }), 60000),
