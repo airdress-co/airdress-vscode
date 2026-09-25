@@ -28,6 +28,7 @@ import {
   type Clock,
   type DeployDeps,
   type DeployOutcome,
+  requestedCapabilities,
 } from "../functions/deploy";
 import {
   OWNER_MANIFEST_FILE,
@@ -1410,3 +1411,38 @@ suite("the function shows who may deploy it", () => {
     ]);
   });
 });
+
+suite(
+  "deploy: a create with no function.yaml grants what the tree asks for",
+  () => {
+    const tree = (fj: unknown) =>
+      new Map([
+        ["function.json", new TextEncoder().encode(JSON.stringify(fj))],
+      ]);
+
+    test("each requested capability, by its short name", () => {
+      assert.deepStrictEqual(
+        requestedCapabilities(
+          tree({
+            capabilities: [
+              { name: "airdress:fn/log@0.1.0" },
+              { name: "airdress:fn/kv@0.1.0" },
+            ],
+          }),
+        ),
+        { log: {}, kv: {} },
+      );
+    });
+
+    test("nothing asked, or nothing readable, grants nothing", () => {
+      assert.deepStrictEqual(requestedCapabilities(tree({})), {});
+      assert.deepStrictEqual(requestedCapabilities(new Map()), {});
+      assert.deepStrictEqual(
+        requestedCapabilities(
+          new Map([["function.json", new TextEncoder().encode("{not json")]]),
+        ),
+        {},
+      );
+    });
+  },
+);

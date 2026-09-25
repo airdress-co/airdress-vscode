@@ -300,12 +300,15 @@ class DeployRun {
     // 3 — one confirmation, before the first write.
     this.step = "confirm";
     const createManifest = creating
-      ? await this.createManifestDraft()
+      ? await this.createManifestDraft(tree)
       : undefined;
+    // The version the operator will store (it includes the engine), not
+    // the tree's own digest: this is the name the status bar will show.
+    const offered = checked.version || local;
     const confirmed = createManifest
-      ? await this.confirmCreate(createManifest, local, tree.size)
+      ? await this.confirmCreate(createManifest, offered, tree.size)
       : await this.confirmReplace(
-          local,
+          offered,
           tree.size,
           checked.unreachable.length,
           signAs,
@@ -451,10 +454,16 @@ class DeployRun {
   }
 
   /** `function.yaml` as the create will apply it, drafting one if absent. */
-  private async createManifestDraft(): Promise<FunctionManifest> {
+  private async createManifestDraft(
+    tree: SourceTree,
+  ): Promise<FunctionManifest> {
     const text = await this.readOwnerManifest();
+    // With no function.yaml, grant exactly what function.json asks for,
+    // for the owner to read in the confirmation — as the CLI does. An empty
+    // grant creates a function that then fails to load.
     let spec: Record<string, unknown> = {
       runtime: "js-source/v1",
+      capabilities: requestedCapabilities(tree),
       enabled: true,
     };
     if (text !== undefined) {
@@ -905,4 +914,35 @@ export async function waitForLoaded(
     await clock.sleep(delay);
     delay = Math.min(delay * 2, 2000);
   }
+}
+
+/**
+ * The grant a tree asks for: each `function.json` capability
+ * (`airdress:fn/<name>@<version>`) as `{ <name>: {} }`. Unreadable or
+ * absent yields none; the operator's check says why.
+ */
+export function requestedCapabilities(
+  tree: SourceTree,
+): Record<string, Record<string, never>> {
+  const caps: Record<string, Record<string, never>> = {};
+  const bytes = tree.get("function.json");
+  if (!bytes) {
+    return caps;
+  }
+  let fj: unknown;
+  try {
+    fj = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return caps;
+  }
+  const list =
+    isRecord(fj) && Array.isArray(fj.capabilities) ? fj.capabilities : [];
+  for (const c of list) {
+    const full = isRecord(c) && typeof c.name === "string" ? c.name : "";
+    const short = full.replace(/^airdress:fn\//, "").split("@")[0];
+    if (short) {
+      caps[short] = {};
+    }
+  }
+  return caps;
 }

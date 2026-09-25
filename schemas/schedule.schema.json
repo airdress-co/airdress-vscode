@@ -268,5 +268,5 @@
   ],
   "title": "Airdress operator Schedule manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.89"
+  "x-airdress-operator-version": "v0.1.90"
 }
