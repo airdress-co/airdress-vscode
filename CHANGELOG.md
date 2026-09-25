@@ -14,6 +14,13 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.6.0](https://github.com/airdress-co/airdress-vscode/compare/v0.5.0...v0.6.0) (2026-09-25)
+
+
+### Features
+
+* **functions:** deploy in one step, start from working code, keep the key in the keychain ([7d30320](https://github.com/airdress-co/airdress-vscode/commit/7d3032008b368a15a7bb3568e514dd1cf6156cfa))
+
 ## [0.5.0](https://github.com/airdress-co/airdress-vscode/compare/v0.4.0...v0.5.0) (2026-09-25)
 
 
