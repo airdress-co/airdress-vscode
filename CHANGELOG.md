@@ -14,6 +14,19 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.7.0](https://github.com/airdress-co/airdress-vscode/compare/v0.6.0...v0.7.0) (2026-09-25)
+
+
+### Features
+
+* **functions:** a function with no profile for its operator offers to connect one ([5f1c355](https://github.com/airdress-co/airdress-vscode/commit/5f1c355bd9b122e8d342732d62e74a6a7492d196))
+* **functions:** know when the editor is inside a function, and show its tooling there ([eb9dd5b](https://github.com/airdress-co/airdress-vscode/commit/eb9dd5b547fbd0c2c135b680a651f1420d390f46))
+
+
+### Bug Fixes
+
+* **functions:** check the owner's manifest from the one save hook, not a second listener ([89528c3](https://github.com/airdress-co/airdress-vscode/commit/89528c3b0de715894a6a49721837743cc3a7a72e))
+
 ## [0.6.0](https://github.com/airdress-co/airdress-vscode/compare/v0.5.0...v0.6.0) (2026-09-25)
 
 
