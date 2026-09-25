@@ -43,11 +43,11 @@
     },
     "spec": {
       "additionalProperties": false,
-      "description": "A hosted function: a signed WebAssembly component bundle the operator loads from its bundles directory and serves at /fn/<name>. The bundle's own manifest is the author's request; this block is the owner's grant, and a bundle asking for more than it is granted is refused rather than widened.",
+      "description": "A hosted function served at /fn/<name>: either a signed WebAssembly component bundle the operator loads from its bundles directory, or signed TypeScript/JavaScript source the operator bundles and runs on its shared engine. Exactly one of bundle and source is present. The function's own manifest is the author's request; this block is the owner's grant, and a function asking for more than it is granted is refused rather than widened.",
       "properties": {
         "bundle": {
           "additionalProperties": false,
-          "description": "Which bundle to load, and the digest and signer to check it against.",
+          "description": "Which bundle to load, and the digest and signer to check it against. Used with runtime \"wasm-component/v1\"; mutually exclusive with source.",
           "properties": {
             "path": {
               "description": "Bare filename of the .tar.zst bundle inside the operator's bundles directory. No directory separators and no parent references.",
@@ -75,7 +75,10 @@
           "required": [
             "path"
           ],
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "capabilities": {
           "additionalProperties": false,
@@ -227,10 +230,287 @@
           },
           "type": "object"
         },
+        "config": {
+          "description": "Configuration the function reads at each invocation (airdress.config in JavaScript; the AIRDRESS_FUNCTION_CONFIG environment variable, a JSON object, for a bundle). Values are resolved when the function is called, not when it is applied, so rotating a secret takes effect on the next call with no re-sign and no re-publish. Nothing here is ever part of the signed source.",
+          "items": {
+            "additionalProperties": false,
+            "description": "One configuration value: written inline, or drawn from a secret when the function is called. Set exactly one of value or valueFrom.",
+            "properties": {
+              "name": {
+                "description": "The key the function reads it under. Letters, digits and underscores, not starting with a digit; unique within spec.config.",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "type": "string"
+              },
+              "value": {
+                "description": "A literal JSON value. It is stored in the manifest in the clear, so never put a secret here. Set exactly one of value or valueFrom."
+              },
+              "valueFrom": {
+                "additionalProperties": false,
+                "description": "A value read from a secret each time the function is called; the function receives it as a string. Use this for credentials. Set exactly one of value or valueFrom.",
+                "properties": {
+                  "secretRef": {
+                    "description": "The name of a secret held by this operator.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "secretRef"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "enabled": {
           "default": true,
           "description": "Whether /fn/<name> is served. When false the bundle is still loaded and validated so a problem is reported, but no route is bound.",
           "type": "boolean"
+        },
+        "events": {
+          "additionalProperties": false,
+          "description": "Which events this function receives. Every filter is evaluated by the operator before the function runs; an event that does not match is never an invocation, and a filter that errors or runs over its cost limit counts as no match.",
+          "properties": {
+            "filters": {
+              "default": [],
+              "description": "Filters over the event, each naming its dialect. All of them must match. An empty list receives every event from the source.",
+              "items": {
+                "additionalProperties": false,
+                "description": "A filter over events. \"structured\" takes exactly one of exact, prefix, suffix, all, any and not, as the CloudEvents Subscriptions API defines them. \"cesql\" and \"cel\" take an expression.",
+                "properties": {
+                  "all": {
+                    "description": "All nested filters must match; at least one is required. Structured dialect.",
+                    "items": {
+                      "additionalProperties": false,
+                      "maxProperties": 1,
+                      "minProperties": 1,
+                      "properties": {
+                        "all": {
+                          "items": {
+                            "type": "object"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "any": {
+                          "items": {
+                            "type": "object"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "exact": {
+                          "additionalProperties": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "minProperties": 1,
+                          "type": "object"
+                        },
+                        "not": {
+                          "type": "object"
+                        },
+                        "prefix": {
+                          "additionalProperties": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "minProperties": 1,
+                          "type": "object"
+                        },
+                        "suffix": {
+                          "additionalProperties": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "minProperties": 1,
+                          "type": "object"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "description": "At least one nested filter must match; at least one is required. Structured dialect.",
+                    "items": {
+                      "additionalProperties": false,
+                      "maxProperties": 1,
+                      "minProperties": 1,
+                      "properties": {
+                        "all": {
+                          "items": {
+                            "type": "object"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "any": {
+                          "items": {
+                            "type": "object"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "exact": {
+                          "additionalProperties": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "minProperties": 1,
+                          "type": "object"
+                        },
+                        "not": {
+                          "type": "object"
+                        },
+                        "prefix": {
+                          "additionalProperties": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "minProperties": 1,
+                          "type": "object"
+                        },
+                        "suffix": {
+                          "additionalProperties": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "minProperties": 1,
+                          "type": "object"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "dialect": {
+                    "description": "The filter's dialect: \"structured\", \"cesql\" (CloudEvents SQL) or \"cel\" (Common Expression Language). A dialect this operator does not serve, or has switched off, is refused when the manifest is applied.",
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "exact": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Every named attribute must equal its value exactly (case sensitive). Structured dialect.",
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "expression": {
+                    "description": "The expression, for the cesql and cel dialects. Parsed and checked when the manifest is applied; one that does not parse is refused with its position.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "not": {
+                    "additionalProperties": false,
+                    "description": "The nested filter must not match. Structured dialect.",
+                    "maxProperties": 1,
+                    "minProperties": 1,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "exact": {
+                        "additionalProperties": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "minProperties": 1,
+                        "type": "object"
+                      },
+                      "not": {
+                        "type": "object"
+                      },
+                      "prefix": {
+                        "additionalProperties": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "minProperties": 1,
+                        "type": "object"
+                      },
+                      "suffix": {
+                        "additionalProperties": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "minProperties": 1,
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "prefix": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Every named attribute must start with its value (case sensitive). Structured dialect.",
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "suffix": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Every named attribute must end with its value (case sensitive). Structured dialect.",
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "dialect"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "source": {
+              "default": "ingress",
+              "description": "Where the events come from. \"ingress\" is the only source.",
+              "oneOf": [
+                {
+                  "description": "Events arriving at this operator's ingress endpoints.",
+                  "enum": [
+                    "ingress"
+                  ],
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "limits": {
           "additionalProperties": false,
@@ -274,13 +554,147 @@
         },
         "runtime": {
           "default": "wasm-component/v1",
-          "description": "Runtime tier. Only \"wasm-component/v1\" is accepted; the field exists so a second tier can be named without changing the manifest shape.",
+          "description": "Runtime tier: \"wasm-component/v1\" for a bundle, \"js-source/v1\" for source. An operator without the source tier refuses \"js-source/v1\" by saying so, not by calling it malformed.",
           "type": "string"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "Which published source version to run, or which archive to import, and who must have signed it. Used with runtime \"js-source/v1\"; mutually exclusive with bundle.",
+          "properties": {
+            "import": {
+              "additionalProperties": false,
+              "description": "Import a source archive from the operator's import directory (the fleet path). A function served from an import is read-only to the authoring API.",
+              "properties": {
+                "path": {
+                  "description": "Bare filename of the .tar.zst source archive inside the operator's import directory. No directory separators and no parent references. Its detached signature is the file of the same name with .sig appended.",
+                  "minLength": 1,
+                  "pattern": "^(?!\\.{1,2}$)[^/\\\\]+$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "signer": {
+              "description": "Ed25519 public key, 64 hex characters, that the source's detached signature must verify against.",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "signerRef": {
+              "additionalProperties": false,
+              "description": "An approved machine whose registered source-signing key must have signed the source. Revoking that key stops its future source without editing this manifest.",
+              "properties": {
+                "machine": {
+                  "description": "The approved machine's name or id.",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "machine"
+              ],
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "version": {
+              "description": "A published version in this operator's store, as sha256: followed by 64 lowercase hex characters. Rolling back is applying the manifest with an earlier version.",
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "tool": {
+          "additionalProperties": false,
+          "description": "Declares this function to agents as a tool, served by the operator's tool bridge when that is enabled. Off unless enabled is true. A call is the same /fn/<name> invocation every other caller makes, authorized the same way.",
+          "properties": {
+            "annotations": {
+              "additionalProperties": false,
+              "default": {},
+              "description": "Hints shown to callers. The operator relies on none of them: a retried call is deduplicated whatever idempotentHint says.",
+              "properties": {
+                "destructiveHint": {
+                  "description": "The tool may change or delete something irreversibly.",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "idempotentHint": {
+                  "description": "Calling the tool twice with the same arguments has no further effect.",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "openWorldHint": {
+                  "description": "The tool talks to things outside the operator.",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "readOnlyHint": {
+                  "description": "The tool does not change anything.",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "description": {
+              "description": "What the tool does, written for a model deciding whether to call it.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Whether the tool bridge lists and calls this function. Default false.",
+              "type": "boolean"
+            },
+            "inputSchema": {
+              "description": "JSON Schema of the arguments. Must be an object schema; it is checked to be a schema when applied, not when called."
+            },
+            "name": {
+              "description": "The tool name agents see: letters, digits, underscore and hyphen, 1 to 64 characters. Defaults to the function's name.",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "outputSchema": {
+              "description": "JSON Schema of the result, when the function answers with JSON."
+            }
+          },
+          "required": [
+            "description",
+            "inputSchema"
+          ],
+          "type": [
+            "object",
+            "null"
+          ]
         }
       },
-      "required": [
-        "bundle"
-      ],
       "type": "object"
     }
   },
@@ -292,5 +706,5 @@
   ],
   "title": "Airdress operator Function manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.86"
+  "x-airdress-operator-version": "v0.1.87"
 }

@@ -504,7 +504,10 @@ suite("Function panel: form derived from the bundled schema", () => {
   test("constraints ride along: required, pattern, min/max, enum, default", () => {
     const bundlePath = at("bundle.path");
     assert.strictEqual(bundlePath?.kind, "string");
-    assert.strictEqual(bundlePath?.required, true);
+    // `bundle` became optional with the source tier, so its leaves are
+    // never "required" in the form (like `limits` below); the operator
+    // holds bundle-or-source at apply.
+    assert.strictEqual(bundlePath?.required, false);
     assert.ok(bundlePath?.pattern);
     assert.strictEqual(at("bundle.sha256")?.required, false);
     assert.strictEqual(at("bundle.sha256")?.nullable, true);
