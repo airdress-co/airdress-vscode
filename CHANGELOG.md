@@ -14,6 +14,21 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.5.0](https://github.com/airdress-co/airdress-vscode/compare/v0.4.0...v0.5.0) (2026-09-25)
+
+
+### Features
+
+* **auth:** ask which account, and bind the profile to the one that answered ([78eb1d6](https://github.com/airdress-co/airdress-vscode/commit/78eb1d6abefffe96e556095f8be440af0c6a98e9))
+* **functions:** check source unsigned on save, sign only what the operator digests ([1c02d27](https://github.com/airdress-co/airdress-vscode/commit/1c02d27c19c8e9145392afc278d46cfc02de01b6))
+* **functions:** edit function source against the operator, and start from its templates ([477f821](https://github.com/airdress-co/airdress-vscode/commit/477f8212bd35b4bf2d8c0e5861407f6b8c7674b2))
+* **tree:** revoke an enrollment from the Enrollments node ([4cdbd79](https://github.com/airdress-co/airdress-vscode/commit/4cdbd797ca8ade0e2896fa22740a65a776e9718f))
+
+
+### Bug Fixes
+
+* **tree:** an empty enrollments listing says so instead of expanding to nothing ([42fbf7c](https://github.com/airdress-co/airdress-vscode/commit/42fbf7c23ef46d978547c19e20bf9faeedac7165))
+
 ## [0.4.0](https://github.com/airdress-co/airdress-vscode/compare/v0.3.0...v0.4.0) (2026-09-13)
 
 
