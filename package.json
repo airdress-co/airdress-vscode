@@ -2,7 +2,7 @@
   "name": "airdress-vscode",
   "displayName": "Airdress",
   "description": "Your Airdress operators, in your editor — sign in, switch, validate and apply manifests with intent.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "airdress",
   "license": "MIT",
   "repository": {
