@@ -1,6 +1,7 @@
-import type {
-  TemplateHostMessage,
-  TemplatePanelMessage,
+import {
+  defaultFunctionId,
+  type TemplateHostMessage,
+  type TemplatePanelMessage,
 } from "../templateProtocol";
 import type { TemplateField, TemplateSummary } from "../templateTypes";
 
@@ -39,6 +40,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 const inputs = new Map<string, HTMLInputElement>();
 let nameInput: HTMLInputElement | undefined;
+let idInput: HTMLInputElement | undefined;
 let resultLine: HTMLElement | undefined;
 let buttons: HTMLButtonElement[] = [];
 
@@ -148,6 +150,35 @@ function render(
       el("p", { className: "hint", text: "Also its route: /fn/<name>." }),
     ),
   );
+  idInput = document.createElement("input");
+  idInput.id = "function-id";
+  idInput.type = "text";
+  idInput.value = defaultFunctionId(nameInput.value);
+  idInput.spellcheck = false;
+  // The id follows the name until the author edits it.
+  let idEdited = false;
+  idInput.addEventListener("input", () => {
+    idEdited = true;
+  });
+  nameInput.addEventListener("input", () => {
+    if (!idEdited && idInput && nameInput) {
+      idInput.value = defaultFunctionId(nameInput.value);
+    }
+  });
+  const idLabel = el("label", { text: "Function id (function.json id)" });
+  idLabel.htmlFor = idInput.id;
+  form.append(
+    el(
+      "div",
+      { className: "field" },
+      idLabel,
+      idInput,
+      el("p", {
+        className: "hint",
+        text: "The operator writes it into function.json in place of the template's placeholder.",
+      }),
+    ),
+  );
   if (template.config.fields.length === 0) {
     form.append(el("p", { text: "This template takes no configuration." }));
   }
@@ -161,6 +192,7 @@ function render(
     vscode.postMessage({
       type: "create",
       name: nameInput?.value ?? "",
+      functionId: idInput?.value ?? "",
       values: values(),
     }),
   );
@@ -168,7 +200,9 @@ function render(
     className: "secondary",
     text: "Fork the Code into a Folder…",
   });
-  fork.addEventListener("click", () => vscode.postMessage({ type: "fork" }));
+  fork.addEventListener("click", () =>
+    vscode.postMessage({ type: "fork", functionId: idInput?.value ?? "" }),
+  );
   buttons = [create, fork];
   resultLine = el("p", { className: "result" });
   app.append(

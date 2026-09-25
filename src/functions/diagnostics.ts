@@ -67,7 +67,7 @@ export function refusalDiagnostics(
       vscode.DiagnosticSeverity.Error,
     );
     d.source = DIAGNOSTIC_SOURCE;
-    d.code = refusal.error;
+    d.code = refusal.reason ?? refusal.error;
     const others = placed.filter((p) => p.loc !== loc);
     if (others.length > 0) {
       d.relatedInformation = others.map(
@@ -89,7 +89,7 @@ export function refusalDiagnostics(
       vscode.DiagnosticSeverity.Error,
     );
     d.source = DIAGNOSTIC_SOURCE;
-    d.code = refusal.error;
+    d.code = refusal.reason ?? refusal.error;
     out.push({ uri: vscode.Uri.joinPath(root, MANIFEST_FILE), diagnostic: d });
   }
   return out;

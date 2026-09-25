@@ -116,9 +116,16 @@ export function openTemplatePanel(
                   profile,
                   template,
                   msg.name,
+                  msg.functionId,
                   msg.values,
                 )
-              : await forkTemplate(deps, template, defaultFolder?.());
+              : await forkTemplate(
+                  deps,
+                  profile,
+                  template,
+                  msg.functionId,
+                  defaultFolder?.(),
+                );
           post({ type: "result", ...result });
         } catch (err) {
           post({

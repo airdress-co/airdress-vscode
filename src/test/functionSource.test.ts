@@ -189,6 +189,7 @@ suite("function source: refusal locations become markers", () => {
   test("a location lands in its file, on its line and column (1-based → 0-based)", () => {
     const refusal = decodeRefusal({
       error: "transpile_failed",
+      reason: "TranspileFailed",
       message: "Unexpected token",
       locations: [{ path: "src/lib/sign.ts", line: 12, column: 5 }],
     })!;
@@ -197,7 +198,7 @@ suite("function source: refusal locations become markers", () => {
     assert.strictEqual(placed.diagnostic.range.start.line, 11);
     assert.strictEqual(placed.diagnostic.range.start.character, 4);
     assert.strictEqual(placed.diagnostic.message, "Unexpected token");
-    assert.strictEqual(placed.diagnostic.code, "transpile_failed");
+    assert.strictEqual(placed.diagnostic.code, "TranspileFailed");
     assert.strictEqual(placed.diagnostic.source, DIAGNOSTIC_SOURCE);
     assert.strictEqual(
       placed.diagnostic.severity,
@@ -461,15 +462,23 @@ suite("function source: validate on save is a dry run and nothing else", () => {
       collection.set(vscode.Uri.file(path.join(dir, "src", "main.ts")), [
         new vscode.Diagnostic(new vscode.Range(0, 0, 0, 1), "old"),
       ]);
+      const deps = depsWith(client, new FakeUI(), collection);
+      let keyRead = false;
+      deps.signing = async () => {
+        keyRead = true;
+        throw new Error("a save must not read the signing key");
+      };
       const outcome = await validateOnSave(
-        depsWith(client, new FakeUI(), collection),
+        deps,
         vscode.Uri.file(path.join(dir, "src", "main.ts")),
       );
       assert.strictEqual(outcome?.kind, "ok");
+      assert.strictEqual(keyRead, false, "a save needs no signing key");
       assert.strictEqual(calls.length, 1);
       assert.strictEqual(calls[0].method, "POST");
       assert.ok(calls[0].url.endsWith("/v1/functions/sources?dry-run=true"));
       const body = calls[0].body as Record<string, unknown>;
+      assert.ok(!("signature" in body), "the save's dry run is unsigned");
       assert.strictEqual(body.basedOn, V1);
       assert.strictEqual(body.name, "relay");
       assert.deepStrictEqual(
@@ -826,5 +835,113 @@ suite("function source: the listing and the tree", () => {
       "airdress.functions.source.openFile",
     );
     assert.strictEqual(item.contextValue, "airdressSourceFile");
+  });
+});
+
+suite("function source: a publish signs only what the operator digests", () => {
+  function publishRoute(
+    digest: (tree: Map<string, Uint8Array>) => string,
+  ): Route {
+    return (c) => {
+      if (c.method !== "POST") {
+        return undefined;
+      }
+      const sent = c.body as {
+        files: Array<{ path: string; contentBase64: string }>;
+      };
+      const tree = new Map(
+        sent.files.map((f) => [
+          f.path,
+          new Uint8Array(Buffer.from(f.contentBase64, "base64")),
+        ]),
+      );
+      const dryRun = c.url.includes("dry-run=true");
+      return {
+        status: dryRun ? 200 : 201,
+        body: {
+          version: V2,
+          name: "relay",
+          files: [],
+          entry: "src/main.ts",
+          sourceDigest: digest(tree),
+          unreachable: [],
+          warnings: [],
+          dryRun,
+          created: !dryRun,
+        },
+      };
+    };
+  }
+
+  test("an unsigned check, then one signed publish over the agreed digest", async () => {
+    const dir = makeCheckout();
+    const calls: Call[] = [];
+    const key = signingKeyFromSeedText("ef".repeat(32));
+    const collection = vscode.languages.createDiagnosticCollection("t");
+    try {
+      const outcome = await publishCheckout(
+        depsWith(
+          clientWith(publishRoute(canonicalDigestString), calls),
+          new FakeUI({ confirm: true }),
+          collection,
+          { key },
+        ),
+        (await readCheckout(vscode.Uri.file(dir)))!,
+        { dryRun: false },
+      );
+      assert.strictEqual(outcome.kind, "ok");
+      assert.deepStrictEqual(
+        calls.map((c) => c.url.replace("https://ada.a.airdr.es", "")),
+        ["/v1/functions/sources?dry-run=true", "/v1/functions/sources"],
+      );
+      assert.ok(!("signature" in (calls[0].body as object)));
+      const signed = calls[1].body as { signature: string; signer: string };
+      assert.strictEqual(signed.signer, key.publicKeyHex);
+      assert.strictEqual(signed.signature.length, 128);
+      assert.deepStrictEqual(
+        (await readCheckout(vscode.Uri.file(dir)))!.record.published,
+        [V2],
+      );
+    } finally {
+      collection.dispose();
+    }
+  });
+
+  test("a digest mismatch is an error, and nothing is signed or stored", async () => {
+    const dir = makeCheckout();
+    const calls: Call[] = [];
+    const ui = new FakeUI({ confirm: true });
+    let keyRead = false;
+    const collection = vscode.languages.createDiagnosticCollection("t");
+    try {
+      const deps = depsWith(
+        clientWith(
+          publishRoute(() => `sha256:${"0".repeat(64)}`),
+          calls,
+        ),
+        ui,
+        collection,
+      );
+      deps.signing = async () => {
+        keyRead = true;
+        return {};
+      };
+      const outcome = await publishCheckout(
+        deps,
+        (await readCheckout(vscode.Uri.file(dir)))!,
+        { dryRun: false },
+      );
+      assert.strictEqual(outcome.kind, "failed");
+      assert.strictEqual(calls.length, 1, "only the unsigned check was sent");
+      assert.strictEqual(keyRead, false);
+      assert.ok(
+        ui.lines.some(
+          (l) =>
+            l.startsWith("error: ") && l.includes("sha256:" + "0".repeat(64)),
+        ),
+      );
+    } finally {
+      collection.dispose();
+    }
   });
 });

@@ -2,12 +2,8 @@ import * as vscode from "vscode";
 import type { ApiClient } from "../api/client";
 import type { Profile } from "../profiles/model";
 import { publishTemplateConfirm, targetPhrase } from "../profiles/confirm";
-import {
-  CHECKOUT_FILE,
-  MANIFEST_FILE,
-  publishBody,
-  type SigningChoice,
-} from "./local";
+import { CHECKOUT_FILE, MANIFEST_FILE, type SigningChoice } from "./local";
+import { publishTree } from "./source";
 import {
   capabilitiesSuggestion,
   configEntries,
@@ -20,7 +16,6 @@ import {
 import {
   isStaleBase,
   listTemplates,
-  publishSource,
   readTemplate,
   refusalOf,
   type Template,
@@ -121,11 +116,15 @@ export async function createFromTemplate(
   profile: Profile,
   template: Template,
   name: string,
+  functionId: string,
   values: FormValues,
 ): Promise<ActionResult> {
   const trimmed = name.trim();
   if (!trimmed) {
     return { ok: false, message: "Name the function first." };
+  }
+  if (!functionId.trim()) {
+    return { ok: false, message: "Give the function an id first." };
   }
   const config = configEntries(template.config.fields, values);
   if (config.missing.length > 0 || config.invalid.length > 0) {
@@ -149,18 +148,25 @@ export async function createFromTemplate(
   ) {
     return { ok: false, message: "Nothing was published." };
   }
-  const signing = await deps.signing();
-  const tree = new Map(
-    Object.entries(template.files).map(([p, c]) => [
-      p,
-      new Uint8Array(Buffer.from(c, "utf8")),
-    ]),
-  );
+  const client = deps.client(profile);
+  let signing: SigningChoice = {};
   let version: string;
   try {
-    const published = await publishSource(
-      deps.client(profile),
-      publishBody(trimmed, null, tree, signing),
+    // The files as the operator serves them for this id — its
+    // placeholder replaced by the operator, not by this editor.
+    const served = await readTemplate(client, template.id, functionId.trim());
+    const tree = new Map(
+      Object.entries(served.files).map(([p, c]) => [
+        p,
+        new Uint8Array(Buffer.from(c, "utf8")),
+      ]),
+    );
+    const published = await publishTree(
+      client,
+      trimmed,
+      null,
+      tree,
+      async () => (signing = await deps.signing()),
       { dryRun: false },
     );
     version = published.version;
@@ -213,9 +219,14 @@ export async function createFromTemplate(
  */
 export async function forkTemplate(
   deps: TemplateDeps,
+  profile: Profile,
   template: Template,
+  functionId: string,
   defaultFolder?: vscode.Uri,
 ): Promise<ActionResult> {
+  if (!functionId.trim()) {
+    return { ok: false, message: "Give the function an id first." };
+  }
   const root = await deps.ui.pickFolder(defaultFolder);
   if (!root) {
     return { ok: false, message: "Nothing was written." };
@@ -231,7 +242,12 @@ export async function forkTemplate(
       // absent: good
     }
   }
-  const files = forkFiles(template.files);
+  const served = await readTemplate(
+    deps.client(profile),
+    template.id,
+    functionId.trim(),
+  );
+  const files = forkFiles(served.files);
   for (const f of files) {
     await vscode.workspace.fs.writeFile(
       vscode.Uri.joinPath(root, ...f.path.split("/")),
