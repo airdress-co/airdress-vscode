@@ -21,6 +21,7 @@
     "dist",
     "out",
     "src/webview/browser",
-    "src/selector/browser"
+    "src/selector/browser",
+    "src/functions/browser"
   ]
 }

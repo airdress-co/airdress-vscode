@@ -56,6 +56,7 @@ import {
   drivePanel,
 } from "./webview/panel";
 import * as YAML from "yaml";
+import { registerFunctionCommands } from "./functions/commands";
 
 /**
  * Singleton auth-callback dispatcher. VS Code allows one UriHandler per
@@ -649,7 +650,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     // Apply is a deliberate command — deliberately NOT bound to any
-    // save event; a test asserts the bundle registers no save listener.
+    // save event; the one save listener (function source) only dry-runs.
     vscode.commands.registerCommand("airdress.manifests.apply", async () => {
       await applyManifest(manifestDeps);
     }),
@@ -855,6 +856,15 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
   );
+
+  // Function source and templates: the editing loop, the served-file
+  // scheme, and the single save hook (dry run only).
+  registerFunctionCommands({
+    context,
+    profiles,
+    manifestDeps,
+    resolveProfile: (explicit) => resolveProfile(profiles, explicit),
+  });
 
   // Development-mode only: a script's way into an open panel — the same
   // receive path as the webview's own messages, returning what the host

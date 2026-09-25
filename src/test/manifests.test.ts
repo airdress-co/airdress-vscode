@@ -271,15 +271,26 @@ suite("virtual documents (T6-04)", () => {
 });
 
 suite("no save-to-apply path (T6-04, design §5.2)", () => {
-  test("the shipped bundle registers no save listener at all", () => {
+  // Exactly one save listener exists: the function source dry run
+  // (functions/commands.ts → validateOnSave), which can only ever send
+  // `POST /v1/functions/sources?dry-run=true` — held by the tests in
+  // functionSource.test.ts. It stores nothing and applies nothing. A
+  // second listener is a new path from a save to the network and has to
+  // make that argument again, here.
+  test("the shipped bundle registers one save listener, and no other save hook", () => {
     const ext = vscode.extensions.getExtension("airdress.airdress-vscode");
     assert.ok(ext);
     const bundle = fs.readFileSync(
       path.join(ext.extensionPath, "dist", "extension.js"),
       "utf8",
     );
+    assert.strictEqual(
+      bundle.split("onDidSaveTextDocument").length - 1,
+      1,
+      "dist/extension.js must reference onDidSaveTextDocument exactly once — " +
+        "the dry-run validation of function source",
+    );
     for (const forbidden of [
-      "onDidSaveTextDocument",
       "onWillSaveTextDocument",
       "onDidSaveNotebookDocument",
     ]) {

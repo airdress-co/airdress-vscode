@@ -1,4 +1,5 @@
 import type { Profile } from "../profiles/model";
+import type { SourceListing } from "../functions/source";
 
 /**
  * Tree node data model.
@@ -96,6 +97,17 @@ export type TreeNodeData =
       icon: string;
       text: string;
     }
+  | {
+      /** One file of the source version a Function serves. */
+      type: "sourceFile";
+      profile: Profile;
+      function: string;
+      version: string;
+      path: string;
+      bytes: number;
+      /** Set when the source is imported: readable, not publishable. */
+      importedFrom?: string;
+    }
   | { type: "principal"; profile: Profile; principal: PrincipalMeta }
   | { type: "enrollment"; profile: Profile; enrollment: EnrollmentMeta }
   | {
@@ -118,6 +130,11 @@ export interface TreeFetchers {
   listResources(profile: Profile, kind: string): Promise<ResourceRef[]>;
   listPrincipals(profile: Profile): Promise<PrincipalMeta[] | "forbidden">;
   listEnrollments(profile: Profile): Promise<EnrollmentMeta[]>;
+  /**
+   * A Function's source files. Optional: without it Function rows stay
+   * leaves, as they were before functions had source.
+   */
+  listSourceFiles?(profile: Profile, name: string): Promise<SourceListing>;
   /** Per-resource status; feeds the Resources view AND the health roll-up. */
   getStatus(
     profile: Profile,

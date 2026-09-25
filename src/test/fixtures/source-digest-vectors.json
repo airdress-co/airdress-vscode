@@ -1,0 +1,74 @@
+{
+  "description": "Canonical source digest vectors (design section 5.1). Each tree maps a path to its contents, base64. Produced by an independent Python implementation written from the definition; the Rust test must agree with every one.",
+  "domain": "airdress.function.source.v1",
+  "vectors": [
+    {
+      "name": "empty tree",
+      "files": {},
+      "digest": "sha256:456498292e89321bb29cc4b90e51710fe78d504ea418d3968e6ddd7785b2f2b8"
+    },
+    {
+      "name": "one file",
+      "files": {
+        "function.json": "eyJlbnRyeSI6InNyYy9tYWluLnRzIn0="
+      },
+      "digest": "sha256:bb8026a1d7738e770d63563ac3feb75176e47933ad75097b48bd3ad192ed42e7"
+    },
+    {
+      "name": "two files",
+      "files": {
+        "function.json": "eyJlbnRyeSI6InNyYy9tYWluLnRzIn0=",
+        "src/main.ts": "ZXhwb3J0IGRlZmF1bHQgKCkgPT4gbmV3IFJlc3BvbnNlKCdhJyk7"
+      },
+      "digest": "sha256:d8dfeaa493ac09e5a0db5c347830428fb3887a2a2401fd5d0b31a49a718af8af"
+    },
+    {
+      "name": "two files, contents swapped",
+      "files": {
+        "function.json": "ZXhwb3J0IGRlZmF1bHQgKCkgPT4gbmV3IFJlc3BvbnNlKCdhJyk7",
+        "src/main.ts": "eyJlbnRyeSI6InNyYy9tYWluLnRzIn0="
+      },
+      "digest": "sha256:acd24b08663a4ed389229f18b24f35bac7f287c5aaaf6b6f800e0b5a04b8fd22"
+    },
+    {
+      "name": "path/content boundary moved by one byte (a)",
+      "files": {
+        "src/ab": "Yw=="
+      },
+      "digest": "sha256:8b047fac60d415f690784ec65a00d7553ee4993ab753c19e776b7ff6195e11b3"
+    },
+    {
+      "name": "path/content boundary moved by one byte (b)",
+      "files": {
+        "src/a": "YmM="
+      },
+      "digest": "sha256:cec3ed2f5ad4653f59e9a516dc66e9d80c9bdf42066272ec202954c802421945"
+    },
+    {
+      "name": "non-ASCII path",
+      "files": {
+        "function.json": "eyJlbnRyeSI6InNyYy9tYWluLnRzIn0=",
+        "src/grüße/ñ.ts": "ZXhwb3J0IGNvbnN0IHMgPSAnw58nOw=="
+      },
+      "digest": "sha256:692d74a82a7951666ab0e563128cb9cf6ee47f591c7d0d564dc3c032c0ab5ea4"
+    },
+    {
+      "name": "order in the archive does not matter",
+      "files": {
+        "src/z.ts": "eg==",
+        "src/a.ts": "YQ==",
+        "function.json": "eyJlbnRyeSI6InNyYy9tYWluLnRzIn0="
+      },
+      "digest": "sha256:056f21329fc7ba16296fc657080ec117665d32d3d05b27eb5796ce2579bf1316"
+    },
+    {
+      "name": "byte-wise, not locale, order",
+      "files": {
+        "src/B.ts": "MQ==",
+        "src/a.ts": "Mg==",
+        "src/é.ts": "Mw=="
+      },
+      "digest": "sha256:b2434ad73bf63ecab0690b2faf9da938f0c9a36f42db24c3543f7be634808c8a"
+    }
+  ]
+}

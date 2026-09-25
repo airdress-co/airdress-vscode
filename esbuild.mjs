@@ -45,7 +45,17 @@ const selector = {
   target: "es2022",
 };
 
-const bundles = [extension, webview, selector];
+/** The function template panel's browser bundle — same rules again. */
+const templateForm = {
+  ...shared,
+  entryPoints: ["src/functions/browser/templateForm.ts"],
+  outfile: "dist/templateForm.js",
+  format: "iife",
+  platform: "browser",
+  target: "es2022",
+};
+
+const bundles = [extension, webview, selector, templateForm];
 
 if (watch) {
   const contexts = await Promise.all(bundles.map((b) => esbuild.context(b)));
