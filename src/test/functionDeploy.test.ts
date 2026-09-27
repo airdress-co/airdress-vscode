@@ -1346,10 +1346,14 @@ suite("the + on Function: template-first", () => {
     const h = createHarness({ blankServed: true });
     const checkout = await newSourceFunction(h.deps, PROFILE, "blank");
     assert.ok(checkout);
-    // Only reads: nothing is sent until Deploy.
+    // Only reads: nothing is sent until Deploy. The library's catalogue
+    // is asked for its types; this operator predates it, so none are written.
     assert.deepStrictEqual(
       h.calls.map((c) => `${c.method} ${c.path}`),
-      ["GET /v1/functions/templates/blank?functionId=local.my-fn"],
+      [
+        "GET /v1/functions/templates/blank?functionId=local.my-fn",
+        "GET /v1/functions/sdk",
+      ],
     );
     const root = checkout.root.fsPath;
     assert.strictEqual(root, path.join(h.scratch, "my-fn"));
@@ -1388,6 +1392,7 @@ suite("the + on Function: template-first", () => {
       [
         "GET /v1/functions/templates",
         "GET /v1/functions/templates/hello?functionId=local.my-fn",
+        "GET /v1/functions/sdk",
       ],
     );
     const spec = parseOwnerManifest(

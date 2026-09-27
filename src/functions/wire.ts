@@ -63,8 +63,38 @@ export interface SourcePublished {
   readonly sourceDigest?: string;
   readonly unreachable: readonly string[];
   readonly warnings: readonly string[];
+  /**
+   * The Functions SDK release the tree pins, and the library modules its
+   * bundle reached; undefined when it pins none, or from an operator
+   * older than the library.
+   */
+  readonly sdk?: {
+    readonly version: string;
+    readonly digest: string;
+    readonly modules: readonly string[];
+  };
+  /** Information about the tree that never blocks (the check's notes). */
+  readonly notes: readonly CheckNote[];
   readonly dryRun: boolean;
   readonly created: boolean;
+}
+
+/** One note of the check: information, never a refusal. */
+export interface CheckNote {
+  /** Stable, e.g. `sdk_module_alpha`. */
+  readonly code: string;
+  readonly message: string;
+  readonly location?: RefusalLocation;
+}
+
+/**
+ * The edit that resolves a refusal, when the operator names exactly one:
+ * capabilities to add to `function.json`, or keys to set in it.
+ */
+export interface RefusalFix {
+  readonly file: string;
+  readonly add?: { readonly capabilities?: ReadonlyArray<{ name: string }> };
+  readonly set?: Readonly<Record<string, unknown>>;
 }
 
 /** Where a refusal points: an archive path, 1-based line and column. */
@@ -90,6 +120,8 @@ export interface SourceRefusal {
   readonly message: string;
   readonly locations: readonly RefusalLocation[];
   readonly denials: readonly RefusalDenial[];
+  /** The quick fix the operator offers, when there is one. */
+  readonly fix?: RefusalFix;
 }
 
 /** `409 source_base_stale`: what the function serves instead. */
@@ -175,7 +207,49 @@ export function decodeRefusal(body: unknown): SourceRefusal | undefined {
     message: typeof body.message === "string" ? body.message : body.error,
     locations,
     denials,
+    fix: decodeFix(body.fix),
   };
+}
+
+function decodeFix(v: unknown): RefusalFix | undefined {
+  if (!isRecord(v) || typeof v.file !== "string") {
+    return undefined;
+  }
+  const caps =
+    isRecord(v.add) && Array.isArray(v.add.capabilities)
+      ? v.add.capabilities.filter(
+          (c): c is { name: string } =>
+            isRecord(c) && typeof c.name === "string",
+        )
+      : undefined;
+  const set = isRecord(v.set) ? (v.set as Record<string, unknown>) : undefined;
+  if (!caps?.length && !set) {
+    return undefined;
+  }
+  return {
+    file: v.file,
+    ...(caps?.length ? { add: { capabilities: caps } } : {}),
+    ...(set ? { set } : {}),
+  };
+}
+
+function decodeNotes(v: unknown): CheckNote[] {
+  return Array.isArray(v)
+    ? v
+        .filter(
+          (n): n is Record<string, unknown> =>
+            isRecord(n) &&
+            typeof n.code === "string" &&
+            typeof n.message === "string",
+        )
+        .map((n) => ({
+          code: n.code as string,
+          message: n.message as string,
+          ...(isRecord(n.location) && typeof n.location.path === "string"
+            ? { location: n.location as unknown as RefusalLocation }
+            : {}),
+        }))
+    : [];
 }
 
 /** Whether a refusal is the stale-base one, with the fields it promises. */
@@ -287,6 +361,21 @@ export async function publishSource(
     warnings: Array.isArray(out.warnings)
       ? out.warnings.filter((w): w is string => typeof w === "string")
       : [],
+    sdk:
+      isRecord(out.sdk) &&
+      typeof out.sdk.version === "string" &&
+      typeof out.sdk.digest === "string"
+        ? {
+            version: out.sdk.version,
+            digest: out.sdk.digest,
+            modules: Array.isArray(out.sdk.modules)
+              ? out.sdk.modules.filter(
+                  (m): m is string => typeof m === "string",
+                )
+              : [],
+          }
+        : undefined,
+    notes: decodeNotes(out.notes),
     dryRun: out.dryRun === true,
     created: out.created === true,
   };
@@ -396,4 +485,70 @@ export async function promoteVersion(
     generation: typeof out.generation === "number" ? out.generation : undefined,
     changed: out.changed,
   };
+}
+
+/** One Functions SDK release, as `GET /v1/functions/sdk` lists it. */
+export interface SdkRelease {
+  readonly version: string;
+  readonly digest: string;
+  /** `current`, `deprecated` or `withdrawn`. */
+  readonly status: string;
+  readonly replacement?: string | null;
+  readonly reason?: string;
+}
+
+/** `GET /v1/functions/sdk`: the library versions this operator carries. */
+export interface SdkCatalogue {
+  /** What a new function pins; undefined when nothing is current. */
+  readonly newest?: string;
+  readonly versions: readonly SdkRelease[];
+}
+
+/** `GET /v1/functions/sdk`. */
+export async function readSdkCatalogue(
+  client: ApiClient,
+): Promise<SdkCatalogue> {
+  const route = "/v1/functions/sdk";
+  const body = await client.request<unknown>(route);
+  if (!isRecord(body) || !Array.isArray(body.versions)) {
+    throw new UnexpectedSourceResponse(`GET ${route}`);
+  }
+  return {
+    newest: typeof body.newest === "string" ? body.newest : undefined,
+    versions: body.versions
+      .filter(
+        (v): v is Record<string, unknown> =>
+          isRecord(v) &&
+          typeof v.version === "string" &&
+          typeof v.digest === "string" &&
+          typeof v.status === "string",
+      )
+      .map((v) => ({
+        version: v.version as string,
+        digest: v.digest as string,
+        status: v.status as string,
+        replacement:
+          typeof v.replacement === "string" ? v.replacement : undefined,
+        reason: typeof v.reason === "string" ? v.reason : undefined,
+      })),
+  };
+}
+
+/** `GET /v1/functions/sdk/{version}`: the release's files, `sdk.d.ts` included. */
+export async function readSdkFiles(
+  client: ApiClient,
+  version: string,
+): Promise<Record<string, string>> {
+  const route = `/v1/functions/sdk/${enc(version)}`;
+  const body = await client.request<unknown>(route);
+  if (!isRecord(body) || !isRecord(body.files)) {
+    throw new UnexpectedSourceResponse(`GET ${route}`);
+  }
+  const files: Record<string, string> = {};
+  for (const [k, v] of Object.entries(body.files)) {
+    if (typeof v === "string") {
+      files[k] = v;
+    }
+  }
+  return files;
 }

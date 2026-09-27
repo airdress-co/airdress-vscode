@@ -46,6 +46,12 @@
       "description": "Minimum operator host version.",
       "pattern": "^airdress\\.function-host/\\d+\\.\\d+$"
     },
+    "sdk": {
+      "type": "string",
+      "description": "The exact version of the Airdress Functions SDK (@airdress/functions) this source function imports, e.g. 1.0.0. Exact, never a range: the operator resolves @airdress/functions/<module> to that release's compiled-in files, and the release's digest is part of the function's version. Absent when the function imports no library module.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "maxLength": 32
+    },
     "description": { "type": "string", "maxLength": 2000 },
     "author":      { "type": "string", "maxLength": 255 },
     "homepage":    { "type": "string", "format": "uri", "maxLength": 2000 },
@@ -136,7 +142,7 @@
             "required": ["name", "type"],
             "properties": {
               "name":     { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 64 },
-              "type":     { "type": "string", "enum": ["string", "number", "boolean"] },
+              "type":     { "type": "string", "enum": ["string", "number", "boolean", "secret"] },
               "default":  {},
               "required": { "type": "boolean" },
               "description": { "type": "string", "maxLength": 500 }

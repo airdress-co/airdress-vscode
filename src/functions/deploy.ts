@@ -7,7 +7,11 @@ import {
   deployReplaceConfirm,
   targetPhrase,
 } from "../profiles/confirm";
-import { applyDiagnostics, refusalDiagnostics } from "./diagnostics";
+import {
+  applyDiagnostics,
+  noteDiagnostics,
+  refusalDiagnostics,
+} from "./diagnostics";
 import {
   applyFunction,
   manifestFrom,
@@ -283,7 +287,11 @@ class DeployRun {
     } catch (err) {
       return this.refused(err);
     }
-    applyDiagnostics(deps.diagnostics, this.checkout.root, []);
+    applyDiagnostics(
+      deps.diagnostics,
+      this.checkout.root,
+      noteDiagnostics(this.checkout.root, checked.notes),
+    );
 
     // 2 — the operator digests exactly the bytes this editor will sign.
     this.step = "digest";
