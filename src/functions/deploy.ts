@@ -460,7 +460,10 @@ class DeployRun {
     const text = await this.readOwnerManifest();
     // With no function.yaml, grant exactly what function.json asks for,
     // for the owner to read in the confirmation — as the CLI does. An empty
-    // grant creates a function that then fails to load.
+    // grant creates a function that then fails to load. That draft binds no
+    // events: function.json names none, and no template is in scope here.
+    // A template's spec.events lives in the function.yaml the "+" writes,
+    // and is kept below as the owner wrote it.
     let spec: Record<string, unknown> = {
       runtime: "js-source/v1",
       capabilities: requestedCapabilities(tree),
@@ -550,6 +553,15 @@ class DeployRun {
         grantYaml,
         configValues: config.length,
         secretValues,
+        events: isRecord(spec.events)
+          ? {
+              source:
+                typeof spec.events.source === "string"
+                  ? spec.events.source
+                  : "ingress",
+              locationToModels: spec.events.locationToModels === true,
+            }
+          : undefined,
       },
       this.profile,
     );

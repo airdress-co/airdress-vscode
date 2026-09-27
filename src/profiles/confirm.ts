@@ -178,10 +178,29 @@ export function deployCreateConfirm(
     grantYaml: string;
     configValues: number;
     secretValues: number;
+    /** `spec.events` as it will be applied; absent when it binds none. */
+    events?: { source: string; locationToModels?: boolean };
   },
   profile: Pick<Profile, "label" | "fqdn">,
 ): PromptText {
   const from = opts.template ? ` from template "${opts.template}"` : "";
+  // Binding `source: location` by this apply is the owner's consent to
+  // location events: said in words, not left to YAML.
+  const receives = opts.events
+    ? [
+        `It will receive: ${
+          opts.events.source === "location"
+            ? "your location events"
+            : opts.events.source === "ingress"
+              ? "events arriving at this operator's ingress endpoints"
+              : "events"
+        } (source: ${opts.events.source})${
+          opts.events.locationToModels
+            ? ", and may pass them to a model (locationToModels: true)"
+            : ""
+        }`,
+      ]
+    : [];
   const grant = opts.grantYaml.trim()
     ? [
         "It will be allowed to:",
@@ -206,6 +225,7 @@ export function deployCreateConfirm(
     detail: [
       `version  ${opts.version}  (${opts.files} ${opts.files === 1 ? "file" : "files"})`,
       `signers  ${opts.signers}`,
+      ...receives,
       ...grant,
       config,
     ].join("\n"),

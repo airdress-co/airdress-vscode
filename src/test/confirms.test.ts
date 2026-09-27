@@ -179,6 +179,38 @@ suite("every write-guarding prompt names its target", () => {
     assert.match(set, /Allowed to sign afterwards:\n {2}- machine ci/);
   });
 
+  test("a create that binds events says what it will receive", () => {
+    const base = {
+      name: "where",
+      template: "location-status",
+      version: "sha256:9f",
+      files: 2,
+      signers: "key 5c1e…a07b (this workstation)",
+      grantYaml: "spec:\n  capabilities:\n    kv: {}\n",
+      configValues: 0,
+      secretValues: 0,
+    };
+    const bound = deployCreateConfirm(
+      { ...base, events: { source: "location" } },
+      PROFILE,
+    ).detail;
+    assert.match(
+      bound,
+      /^signers {2}.*\nIt will receive: your location events \(source: location\)\nIt will be allowed to:/m,
+    );
+    assert.ok(!bound.includes("locationToModels"), bound);
+    assert.match(
+      deployCreateConfirm(
+        { ...base, events: { source: "location", locationToModels: true } },
+        PROFILE,
+      ).detail,
+      /It will receive: your location events \(source: location\), and may pass them to a model \(locationToModels: true\)/,
+    );
+    assert.ok(
+      !deployCreateConfirm(base, PROFILE).detail.includes("It will receive"),
+    );
+  });
+
   test("namesTarget is strict about the pairing, not just the words", () => {
     assert.ok(
       !namesTarget(

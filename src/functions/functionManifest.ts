@@ -1,7 +1,7 @@
 import * as YAML from "yaml";
 import { ApiError, type ApiClient } from "../api/client";
 import { capabilitiesSuggestion, type ConfigEntry } from "./templates";
-import type { TemplateRequires } from "./templateTypes";
+import type { TemplateEvents, TemplateRequires } from "./templateTypes";
 
 /**
  * A Function's manifest: as the operator holds it, as `/v1/apply` takes
@@ -163,16 +163,39 @@ export function manifestYaml(manifest: FunctionManifest): string {
 }
 
 /**
+ * `spec.events` for a template written for events, indented under `spec:`;
+ * no lines when there is none. Only `source` is written:
+ * `locationToModels` stays absent (off) until the owner adds it.
+ */
+function eventsLines(events: TemplateEvents | undefined): string[] {
+  if (!events?.source) {
+    return [];
+  }
+  return [
+    "  events:",
+    ...(events.source === "location"
+      ? [
+          "    # Binding this source is your consent: the function receives your phone's location events.",
+        ]
+      : []),
+    `    source: ${JSON.stringify(events.source)}`,
+  ];
+}
+
+/**
  * The `function.yaml` a new function starts with: the runtime, the grant
- * its template asks for, and the form's configuration. It names no
- * version and no signer yet — Deploy adds both when it creates the
- * function, after showing the whole document. Nothing here is sent
- * until then.
+ * its template asks for, the form's configuration, and the event source
+ * the template is written for. It names no version and no signer yet —
+ * Deploy adds both when it creates the function, after showing the whole
+ * document. Nothing here is sent until then. This file is the only place
+ * a template's `events` survives to the create: `function.json` names
+ * none.
  */
 export function ownerManifestDraft(opts: {
   name: string;
   requires: TemplateRequires;
   config: readonly ConfigEntry[];
+  events?: TemplateEvents;
 }): string {
   const head = YAML.stringify({
     apiVersion: FUNCTION_API_VERSION,
@@ -200,6 +223,7 @@ export function ownerManifestDraft(opts: {
       head,
       ...grant,
       ...config,
+      ...eventsLines(opts.events),
       "  enabled: true",
     ].join("\n") + "\n"
   );
