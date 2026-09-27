@@ -25,8 +25,9 @@ import { listTemplates, readTemplate, type Template } from "./wire";
  * folder by default — with `function.yaml` beside them, and offer
  * Deploy. No template lives in this extension: the catalogue and every
  * file come from the operator. Nothing is sent until Deploy, and the
- * grant a template asks for is sent only through Deploy's create prompt,
- * which shows it in full.
+ * grant a template asks for, like the event source it is written for
+ * (`spec.events`), is sent only through Deploy's create prompt, which
+ * shows both in full.
  */
 
 export type FunctionStart = "template" | "blank" | "bundle";
@@ -328,6 +329,7 @@ export async function newSourceFunction(
         name,
         requires: template.requires,
         config: config.entries,
+        events: template.events,
       }),
       "utf8",
     ),

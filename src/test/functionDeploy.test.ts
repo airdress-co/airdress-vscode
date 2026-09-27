@@ -842,6 +842,40 @@ suite("deploy: creating a function", () => {
     assert.ok(fs.existsSync(path.join(dir, OWNER_MANIFEST_FILE)));
   });
 
+  test("a create from a template written for events applies spec.events and says so first", async () => {
+    const op = fakeOperator({});
+    const h = harness(op.route, {
+      signing: ME,
+      choose: [CREATE_AND_DEPLOY],
+    });
+    const dir = makeFolder({
+      operator: PROFILE.fqdn,
+      function: "relay",
+      basedOn: null,
+      template: "location-status",
+    });
+    fs.writeFileSync(
+      path.join(dir, OWNER_MANIFEST_FILE),
+      ownerManifestDraft({
+        name: "relay",
+        requires: { kv: {}, log: {} },
+        config: [],
+        events: { source: "location" },
+      }),
+    );
+    const outcome = await deployCheckout(h.deps, checkoutOf(dir));
+    assert.strictEqual(outcome.kind, "deployed", JSON.stringify(outcome));
+    const applied = h.calls.find((c) => c.path === "/v1/apply")!.body as {
+      spec: { events?: unknown };
+    };
+    assert.deepStrictEqual(applied.spec.events, { source: "location" });
+    const create = h.chosen.find((c) => c.actions.includes(CREATE_AND_DEPLOY))!;
+    assert.match(
+      create.detail,
+      /It will receive: your location events \(source: location\)/,
+    );
+  });
+
   test("the private key never reaches the HTTP client, a message or a prompt", async () => {
     const op = fakeOperator({});
     const secrets = new MemorySecrets();
@@ -1151,6 +1185,24 @@ suite("function.yaml", () => {
     });
   });
 
+  test("the draft binds the template's event source, and none without one", () => {
+    const bound = parseOwnerManifest(
+      ownerManifestDraft({
+        name: "where",
+        requires: { kv: {} },
+        config: [],
+        events: { source: "location" },
+      }),
+    ).spec;
+    // locationToModels stays absent: off until the owner adds it.
+    assert.deepStrictEqual(bound.events, { source: "location" });
+    assert.strictEqual(bound.enabled, true);
+    const unbound = parseOwnerManifest(
+      ownerManifestDraft({ name: "relay", requires: { log: {} }, config: [] }),
+    ).spec;
+    assert.strictEqual(unbound.events, undefined);
+  });
+
   test("the served version is rewritten in place, and nothing else", () => {
     const text = [
       "# keep me",
@@ -1205,6 +1257,15 @@ suite("the + on Function: template-first", () => {
             },
           ],
         },
+      },
+      {
+        id: "location-status",
+        title: "Keep a status from your location",
+        description: "",
+        entry: "src/main.ts",
+        requires: { kv: {}, log: {} },
+        events: { source: "location" },
+        config: { fields: [] },
       },
       ...(opts.blankServed
         ? [
@@ -1337,6 +1398,23 @@ suite("the + on Function: template-first", () => {
     ).spec;
     assert.deepStrictEqual(spec.capabilities, { log: {} });
     assert.deepStrictEqual(spec.config, [{ name: "greeting", value: "hello" }]);
+  });
+
+  test("a template written for events carries spec.events into function.yaml", async () => {
+    const h = createHarness({
+      blankServed: true,
+      pickLabel: "Keep a status from your location",
+    });
+    const checkout = await newSourceFunction(h.deps, PROFILE, "template");
+    assert.ok(checkout);
+    const text = fs.readFileSync(
+      path.join(checkout.root.fsPath, OWNER_MANIFEST_FILE),
+      "utf8",
+    );
+    assert.match(text, /# Binding this source is your consent/);
+    const spec = parseOwnerManifest(text).spec;
+    assert.deepStrictEqual(spec.events, { source: "location" });
+    assert.deepStrictEqual(spec.capabilities, { kv: {}, log: {} });
   });
 
   test("an operator without a blank template says so, and writes nothing", async () => {

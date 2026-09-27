@@ -308,6 +308,11 @@ function decodeTemplate(v: unknown, route: string): TemplateSummary {
     description: typeof v.description === "string" ? v.description : "",
     entry: typeof v.entry === "string" ? v.entry : "",
     requires: isRecord(v.requires) ? (v.requires as TemplateRequires) : {},
+    ...(isRecord(v.events) &&
+    typeof v.events.source === "string" &&
+    v.events.source !== ""
+      ? { events: { source: v.events.source } }
+      : {}),
     config: { fields: v.config.fields as TemplateField[] },
   };
 }

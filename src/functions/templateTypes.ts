@@ -14,6 +14,16 @@ export interface TemplateRequires {
   readonly llm?: Record<string, never>;
 }
 
+/**
+ * `events` in a template: the event source its code is written for. It
+ * becomes `spec.events` in the create manifest; binding `source: location`
+ * by the owner's apply is the owner's consent to location events.
+ */
+export interface TemplateEvents {
+  /** `ingress`, `location`, or a source this editor does not know yet. */
+  readonly source: string;
+}
+
 /** One field of a template's configuration form. */
 export interface TemplateField {
   readonly name: string;
@@ -30,6 +40,8 @@ export interface TemplateSummary {
   readonly description: string;
   readonly entry: string;
   readonly requires: TemplateRequires;
+  /** Absent when the template is not written for events. */
+  readonly events?: TemplateEvents;
   readonly config: { readonly fields: readonly TemplateField[] };
 }
 
