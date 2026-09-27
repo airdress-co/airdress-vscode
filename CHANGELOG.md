@@ -14,6 +14,14 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.8.0](https://github.com/airdress-co/airdress-vscode/compare/v0.7.2...v0.8.0) (2026-09-27)
+
+
+### Features
+
+* **functions:** carry a template's events into the create manifest ([025c9ab](https://github.com/airdress-co/airdress-vscode/commit/025c9ab2539dcb4e831267ce774b3d733227c232))
+* **machines:** approve or deny machines waiting to enroll ([020264f](https://github.com/airdress-co/airdress-vscode/commit/020264fef58d0c0ce260962a3e9bb062759738e1))
+
 ## [0.7.2](https://github.com/airdress-co/airdress-vscode/compare/v0.7.1...v0.7.2) (2026-09-25)
 
 
