@@ -19,6 +19,31 @@ import {
  * local tests, which is not published either.
  */
 
+/**
+ * The operator's refusals about the library, as one closed list. The
+ * command line client carries the same list as `sdk-refusals.txt`, one
+ * code per line in this order, and a test in each repository holds its
+ * array to that file. Each is located at the import or at `function.json`
+ * and marked there; an unknown code still passes through verbatim.
+ */
+export const SDK_REFUSAL_CODES = [
+  "sdk_not_pinned",
+  "sdk_version_unknown",
+  "sdk_version_withdrawn",
+  "sdk_module_unknown",
+  "sdk_module_test_only",
+  "sdk_capability_not_requested",
+] as const;
+
+export type SdkRefusalCode = (typeof SDK_REFUSAL_CODES)[number];
+
+/** The ones the operator answers with a `fix`, offered as a quick fix. */
+export const FIXABLE_SDK_REFUSALS: readonly SdkRefusalCode[] = [
+  "sdk_not_pinned",
+  "sdk_version_withdrawn",
+  "sdk_capability_not_requested",
+];
+
 /** Where the types for `version` are written, relative to the function. */
 export function typesPath(version: string): string {
   return `.airdress/sdk-${version}.d.ts`;
