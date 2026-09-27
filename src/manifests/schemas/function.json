@@ -493,14 +493,25 @@
               },
               "type": "array"
             },
+            "locationToModels": {
+              "description": "Allow an invocation that carries a location event to call a model through the llm world. Default false: such a call is refused by the host. Only with source \"location\". Owner-applied consent: a promote never changes it.",
+              "type": "boolean"
+            },
             "source": {
               "default": "ingress",
-              "description": "Where the events come from. \"ingress\" is the only source.",
+              "description": "Where the events come from: \"ingress\" (the default) or \"location\". A location-bound function receives the owner's location events and never receives ingress events. Binding location is the owner's consent: only an apply sets it, never a promote.",
               "oneOf": [
                 {
                   "description": "Events arriving at this operator's ingress endpoints.",
                   "enum": [
                     "ingress"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "description": "Location events from the owner's own phone: zone transitions, one-shot fixes, and sharing and consent state. Binding this source is the owner's consent, given by the apply.",
+                  "enum": [
+                    "location"
                   ],
                   "type": "string"
                 }
@@ -735,5 +746,5 @@
   ],
   "title": "Airdress operator Function manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.90"
+  "x-airdress-operator-version": "v0.1.92"
 }
