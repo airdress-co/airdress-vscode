@@ -57,6 +57,17 @@ import {
 } from "./webview/panel";
 import * as YAML from "yaml";
 import {
+  PendingMachinesTreeProvider,
+  type PendingMachineNode,
+} from "./machines/view";
+import {
+  approvePendingMachine,
+  defaultPendingMachineUI,
+  denyPendingMachine,
+  type PendingMachineDeps,
+} from "./machines/commands";
+import type { PendingEnrollment } from "./machines/pending";
+import {
   registerFunctionCommands,
   type FunctionCommands,
 } from "./functions/commands";
@@ -183,6 +194,32 @@ export function activate(context: vscode.ExtensionContext): void {
   const principalsView = vscode.window.createTreeView("airdress.principals", {
     treeDataProvider: principalsTree,
   });
+  // Machines waiting for the owner's approval. Owner-only, hidden by
+  // the same context key as Principals.
+  const machinesTree = new PendingMachinesTreeProvider(profiles, (profile) =>
+    clientFor(manifestDeps, profile),
+  );
+  const machinesView = vscode.window.createTreeView("airdress.machines", {
+    treeDataProvider: machinesTree,
+  });
+  const machineDeps: PendingMachineDeps = {
+    client: (profile) => clientFor(manifestDeps, profile),
+    ui: defaultPendingMachineUI,
+    refresh: () => machinesTree.refresh(),
+  };
+  const pickPending = async (
+    enrollments: PendingEnrollment[],
+  ): Promise<PendingEnrollment | undefined> =>
+    (
+      await vscode.window.showQuickPick(
+        enrollments.map((e) => ({
+          label: e.name,
+          description: [e.userCode, e.purpose].filter(Boolean).join(" · "),
+          e,
+        })),
+        { placeHolder: "Which waiting machine?" },
+      )
+    )?.e;
 
   /**
    * The Principals view is ABSENT for a non-owner — not empty, not
@@ -192,7 +229,10 @@ export function activate(context: vscode.ExtensionContext): void {
    */
   async function updatePrincipalsContext(): Promise<void> {
     const sidebarVisible =
-      operatorsView.visible || resourcesView.visible || principalsView.visible;
+      operatorsView.visible ||
+      resourcesView.visible ||
+      principalsView.visible ||
+      machinesView.visible;
     const activeId = profiles.activeId();
     const active = activeId ? profiles.get(activeId) : undefined;
     if (!sidebarVisible || !active) {
@@ -257,6 +297,7 @@ export function activate(context: vscode.ExtensionContext): void {
     operatorsTree.refresh();
     resourcesTree.refresh();
     principalsTree.refresh();
+    machinesTree.refresh();
   }
 
   /**
@@ -397,6 +438,7 @@ export function activate(context: vscode.ExtensionContext): void {
     operatorsView,
     resourcesView,
     principalsView,
+    machinesView,
     poller,
     poller.onDidUpdate(() => operatorsTree.refresh()),
     profiles.onDidChange(() => {
@@ -679,6 +721,41 @@ export function activate(context: vscode.ExtensionContext): void {
       "airdress.principals.revoke",
       async (node: TreeNodeData) => {
         await revokeSubUser(adminDeps, node);
+      },
+    ),
+
+    // Pending machines: approve (always through a comparison) or deny.
+    vscode.commands.registerCommand("airdress.machines.refresh", () => {
+      machinesTree.refresh();
+    }),
+    vscode.commands.registerCommand(
+      "airdress.machines.approve",
+      async (node?: PendingMachineNode) => {
+        const target = await machinesTree.resolve(node, pickPending);
+        if (typeof target === "string") {
+          void vscode.window.showInformationMessage(`Airdress: ${target}`);
+        } else if (target) {
+          await approvePendingMachine(
+            machineDeps,
+            target.profile,
+            target.enrollment,
+          );
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "airdress.machines.deny",
+      async (node?: PendingMachineNode) => {
+        const target = await machinesTree.resolve(node, pickPending);
+        if (typeof target === "string") {
+          void vscode.window.showInformationMessage(`Airdress: ${target}`);
+        } else if (target) {
+          await denyPendingMachine(
+            machineDeps,
+            target.profile,
+            target.enrollment,
+          );
+        }
       },
     ),
 

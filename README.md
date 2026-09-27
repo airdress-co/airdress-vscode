@@ -85,6 +85,13 @@ with schema validation and see the diff against what is actually running
   are a form (a secret is named, never pasted); the grants it needs are
   shown as YAML to add, and never written for you. Or fork its code
   into a folder, as ordinary source that no longer refers to it.
+- **Machines wait for you.** The _Pending Machines_ view (owner only)
+  lists machines asking to enroll: name, user code, purpose, the
+  confirmation code and fingerprint, and when the request expires.
+  Approving always asks whether the machine shows the same code — only
+  "it matches" sends anything, and "it differs" offers Deny instead. A
+  machine the operator can link as Home (a Home Assistant install, for
+  example) gets the choice to be linked as one in the same step.
 
 Works in VS Code and, via Open VSX, in VSCodium and other open builds.
 
@@ -119,6 +126,9 @@ F5, or isolated from your daily profile via the command line — see
 - `src/api/` — fetch wrapper + RFC 7807 parsing; `generated/` is checked in.
 - `src/manifests/` — schemas, Ajv diagnostics, live-diff flow.
 - `src/tree/` — resources tree provider.
+- `src/machines/` — pending machines: `pending.ts` the listing and the
+  approve/deny bodies (pure), `commands.ts` the comparison flow,
+  `view.ts` the tree.
 - `src/functions/` — function source and templates: `wire.ts` the
   routes, `local.ts` the folder and the signature, `source.ts` the
   editing loop, `diagnostics.ts` refusals as markers, `templates.ts`

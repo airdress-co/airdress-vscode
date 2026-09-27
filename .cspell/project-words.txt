@@ -49,3 +49,6 @@ webpush
 wordmark
 ZITADEL
 zitadel
+MJHT
+WDJB
+WDJBMJHT
