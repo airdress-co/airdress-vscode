@@ -11,10 +11,12 @@ import {
 } from "../functions/diagnostics";
 import {
   applyFix,
+  FIXABLE_SDK_REFUSALS,
   fixFor,
   fixTitle,
   pinned,
   sdkScaffold,
+  SDK_REFUSAL_CODES,
   SdkFixProvider,
   TSCONFIG,
   typesPath,
@@ -295,5 +297,67 @@ suite("Functions SDK: notes are information, never refusals", () => {
     assert.deepStrictEqual(out.notes, [
       { code: "sdk_module_alpha", message: "alpha" },
     ]);
+  });
+});
+
+suite("Functions SDK: the library's refusals are one closed list", () => {
+  test("the array equals sdk-refusals.txt, line for line", () => {
+    const fixture = fs
+      .readFileSync(
+        path.resolve(
+          __dirname,
+          "..",
+          "..",
+          "src",
+          "functions",
+          "sdk-refusals.txt",
+        ),
+        "utf8",
+      )
+      .split("\n")
+      .filter((l) => l.length > 0);
+    assert.deepStrictEqual([...SDK_REFUSAL_CODES], fixture);
+    for (const c of FIXABLE_SDK_REFUSALS) {
+      assert.ok((SDK_REFUSAL_CODES as readonly string[]).includes(c), c);
+    }
+  });
+
+  test("each is marked where it points, and only the fixable ones offer a fix", () => {
+    const root = vscode.Uri.file("/ws/hello");
+    const fixes: Record<string, unknown> = {
+      sdk_not_pinned: { file: "function.json", set: { sdk: "1.0.0" } },
+      sdk_version_withdrawn: { file: "function.json", set: { sdk: "1.0.1" } },
+      sdk_capability_not_requested: {
+        file: "function.json",
+        add: { capabilities: [{ name: "airdress:fn/kv@0.1.0" }] },
+      },
+    };
+    for (const code of SDK_REFUSAL_CODES) {
+      const atManifest =
+        code === "sdk_version_unknown" || code === "sdk_version_withdrawn";
+      const loc = atManifest
+        ? { path: "function.json" }
+        : { path: "src/main.ts", line: 2, column: 1 };
+      const refusal = decodeRefusal({
+        error: code,
+        message: `refused: ${code}`,
+        locations: [loc],
+        ...(fixes[code] ? { fix: fixes[code] } : {}),
+      });
+      assert.ok(refusal, code);
+      const placed = refusalDiagnostics(root, refusal);
+      assert.strictEqual(placed.length, 1, code);
+      assert.ok(placed[0].uri.path.endsWith(`/${loc.path}`), code);
+      assert.strictEqual(
+        placed[0].diagnostic.severity,
+        vscode.DiagnosticSeverity.Error,
+        code,
+      );
+      assert.strictEqual(
+        fixFor(placed[0].uri, placed[0].diagnostic) !== undefined,
+        (FIXABLE_SDK_REFUSALS as readonly string[]).includes(code),
+        code,
+      );
+    }
   });
 });
