@@ -6,7 +6,11 @@ import {
   rebaseSourceConfirm,
   targetPhrase,
 } from "../profiles/confirm";
-import { applyDiagnostics, refusalDiagnostics } from "./diagnostics";
+import {
+  applyDiagnostics,
+  noteDiagnostics,
+  refusalDiagnostics,
+} from "./diagnostics";
 import {
   archivePathOf,
   checkoutFor,
@@ -516,7 +520,11 @@ export async function publishCheckout(
     deps.ui.error(message);
     return { kind: "failed", message };
   }
-  applyDiagnostics(deps.diagnostics, checkout.root, []);
+  applyDiagnostics(
+    deps.diagnostics,
+    checkout.root,
+    noteDiagnostics(checkout.root, published.notes),
+  );
   const unreachable =
     published.unreachable.length > 0
       ? ` Not reached from the entry: ${published.unreachable.join(", ")}.`

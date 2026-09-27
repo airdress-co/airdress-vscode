@@ -9,6 +9,7 @@ import {
   writeCheckout,
   type Checkout,
 } from "./local";
+import { sdkScaffold } from "./sdk";
 import { configEntries, forkFiles, type FormValues } from "./templates";
 import type { TemplateField } from "./templateTypes";
 import { defaultFunctionId } from "./templateProtocol";
@@ -321,6 +322,22 @@ export async function newSourceFunction(
       vscode.Uri.joinPath(root, ...f.path.split("/")),
       Buffer.from(f.content, "utf8"),
     );
+  }
+  // The Functions SDK: the pin, the types from the operator, a tsconfig
+  // and test/ — all beside src/, so the published set stays function.json
+  // and src/. Nothing when the operator predates the library.
+  const manifestText = files.find((f) => f.path === MANIFEST_FILE)?.content;
+  if (manifestText !== undefined) {
+    for (const f of await sdkScaffold(
+      client,
+      manifestText,
+      await exists(vscode.Uri.joinPath(root, "tsconfig.json")),
+    )) {
+      await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(root, ...f.path.split("/")),
+        Buffer.from(f.content, "utf8"),
+      );
+    }
   }
   await vscode.workspace.fs.writeFile(
     vscode.Uri.joinPath(root, OWNER_MANIFEST_FILE),

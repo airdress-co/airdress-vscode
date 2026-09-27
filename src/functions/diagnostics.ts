@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { MANIFEST_FILE } from "./local";
-import type { SourceRefusal } from "./wire";
+import { rememberFix } from "./sdk";
+import type { CheckNote, SourceRefusal } from "./wire";
 
 /**
  * A source refusal, as editor markers.
@@ -68,6 +69,12 @@ export function refusalDiagnostics(
     );
     d.source = DIAGNOSTIC_SOURCE;
     d.code = refusal.reason ?? refusal.error;
+    // The operator names the one edit that resolves it (a capability to
+    // request, a library version to pin): offered as a quick fix.
+    const manifest = refusal.fix ? fileIn(root, refusal.fix.file) : undefined;
+    if (refusal.fix && manifest) {
+      rememberFix(uri, d, refusal.fix, manifest);
+    }
     const others = placed.filter((p) => p.loc !== loc);
     if (others.length > 0) {
       d.relatedInformation = others.map(
@@ -93,6 +100,29 @@ export function refusalDiagnostics(
     out.push({ uri: vscode.Uri.joinPath(root, MANIFEST_FILE), diagnostic: d });
   }
   return out;
+}
+
+/**
+ * The check's notes, as Information markers: at the place a note names,
+ * else on `function.json`'s first line. A note never blocks.
+ */
+export function noteDiagnostics(
+  root: vscode.Uri,
+  notes: readonly CheckNote[],
+): PlacedDiagnostic[] {
+  return notes.map((n) => {
+    const uri =
+      (n.location && fileIn(root, n.location.path)) ??
+      vscode.Uri.joinPath(root, MANIFEST_FILE);
+    const d = new vscode.Diagnostic(
+      rangeFor(n.location?.line, n.location?.column),
+      n.message,
+      vscode.DiagnosticSeverity.Information,
+    );
+    d.source = DIAGNOSTIC_SOURCE;
+    d.code = n.code;
+    return { uri, diagnostic: d };
+  });
 }
 
 /**

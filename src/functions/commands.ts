@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { SdkFixProvider } from "./sdk";
 import { clientFor, type ManifestDeps } from "../manifests/diff";
 import type { Profile } from "../profiles/model";
 import type { ProfileStore } from "../profiles/store";
@@ -153,6 +154,15 @@ export function registerFunctionCommands(
   };
   const diagnostics =
     vscode.languages.createDiagnosticCollection("airdress-source");
+  // The operator's quick fixes for a refusal (a capability to request, a
+  // library version to pin): an edit to function.json, never a grant.
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: "file" },
+      new SdkFixProvider(),
+      { providedCodeActionKinds: SdkFixProvider.kinds },
+    ),
+  );
   const output = vscode.window.createOutputChannel("Airdress Functions");
   const profileFor = (fqdn: string) => {
     const matches = profiles
