@@ -202,6 +202,21 @@
         "command": "airdress.functions.refreshContext",
         "title": "Airdress: Refresh Function State",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "airdress.machines.refresh",
+        "title": "Airdress: Refresh Pending Machines",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "airdress.machines.approve",
+        "title": "Airdress: Approve Machine…",
+        "icon": "$(check)"
+      },
+      {
+        "command": "airdress.machines.deny",
+        "title": "Airdress: Deny Machine…",
+        "icon": "$(close)"
       }
     ],
     "viewsContainers": {
@@ -233,6 +248,11 @@
           "id": "airdress.principals",
           "name": "Principals",
           "when": "airdress.principalsAvailable"
+        },
+        {
+          "id": "airdress.machines",
+          "name": "Pending Machines",
+          "when": "airdress.principalsAvailable"
         }
       ]
     },
@@ -240,6 +260,10 @@
       {
         "view": "airdress.operators",
         "contents": "No operators here yet. Sign in and pick from the Airdresses your account has claimed — the hub already knows which names are yours.\n[Connect an Airdress](command:airdress.connectAirdress)\nHave a hostname or an operator token instead? [Add a profile by hostname](command:airdress.profiles.add)"
+      },
+      {
+        "view": "airdress.machines",
+        "contents": "No machines are waiting for approval on the active airdress. A machine appears here after it starts enrolling, with the confirmation code it shows."
       }
     ],
     "menus": {
@@ -341,6 +365,11 @@
           "command": "airdress.resources.refresh",
           "when": "view == airdress.resources",
           "group": "navigation@2"
+        },
+        {
+          "command": "airdress.machines.refresh",
+          "when": "view == airdress.machines",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -408,6 +437,26 @@
           "command": "airdress.functions.signers.remove",
           "when": "view == airdress.resources && viewItem == airdressResource.Function",
           "group": "2_signers@2"
+        },
+        {
+          "command": "airdress.machines.approve",
+          "when": "view == airdress.machines && viewItem == airdressPendingMachine",
+          "group": "inline@1"
+        },
+        {
+          "command": "airdress.machines.deny",
+          "when": "view == airdress.machines && viewItem == airdressPendingMachine",
+          "group": "inline@2"
+        },
+        {
+          "command": "airdress.machines.approve",
+          "when": "view == airdress.machines && viewItem == airdressPendingMachine",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "airdress.machines.deny",
+          "when": "view == airdress.machines && viewItem == airdressPendingMachine",
+          "group": "9_destructive@1"
         }
       ],
       "explorer/context": [
