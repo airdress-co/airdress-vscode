@@ -310,11 +310,14 @@ suite("principals view (owner only)", () => {
       "airdress.resources",
       "airdress.principals",
       "airdress.machines",
+      "airdress.homes",
     ]);
     const principals = views.find((v) => v.id === "airdress.principals");
     assert.strictEqual(principals?.when, "airdress.principalsAvailable");
     const machines = views.find((v) => v.id === "airdress.machines");
     assert.strictEqual(machines?.when, "airdress.principalsAvailable");
+    const homes = views.find((v) => v.id === "airdress.homes");
+    assert.strictEqual(homes?.when, "airdress.principalsAvailable");
   });
 
   test("principal tree items expose metadata only", async () => {
