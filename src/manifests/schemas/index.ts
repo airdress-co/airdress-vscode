@@ -1,5 +1,6 @@
 import type { KindSchema } from "../validate";
 import functionKind from "./function.json";
+import home from "./home.json";
 import inferencePoolMember from "./inference-pool-member.json";
 import schedule from "./schedule.json";
 
@@ -37,6 +38,10 @@ export function bundledSchemas(): KindSchema[] {
     {
       kind: "Function",
       schema: functionKind as KindSchema["schema"],
+    },
+    {
+      kind: "Home",
+      schema: home as KindSchema["schema"],
     },
     {
       kind: "InferencePoolMember",
