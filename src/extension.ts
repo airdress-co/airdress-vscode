@@ -60,6 +60,7 @@ import {
   PendingMachinesTreeProvider,
   type PendingMachineNode,
 } from "./machines/view";
+import { HomesTreeProvider, type HomeNode } from "./homes/view";
 import {
   approvePendingMachine,
   defaultPendingMachineUI,
@@ -202,6 +203,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const machinesView = vscode.window.createTreeView("airdress.machines", {
     treeDataProvider: machinesTree,
   });
+  // Linked homes, read-only. Owner-only, hidden by the same context key.
+  const homesTree = new HomesTreeProvider(profiles, (profile) =>
+    clientFor(manifestDeps, profile),
+  );
+  const homesView = vscode.window.createTreeView("airdress.homes", {
+    treeDataProvider: homesTree,
+  });
   const machineDeps: PendingMachineDeps = {
     client: (profile) => clientFor(manifestDeps, profile),
     ui: defaultPendingMachineUI,
@@ -232,7 +240,8 @@ export function activate(context: vscode.ExtensionContext): void {
       operatorsView.visible ||
       resourcesView.visible ||
       principalsView.visible ||
-      machinesView.visible;
+      machinesView.visible ||
+      homesView.visible;
     const activeId = profiles.activeId();
     const active = activeId ? profiles.get(activeId) : undefined;
     if (!sidebarVisible || !active) {
@@ -298,6 +307,7 @@ export function activate(context: vscode.ExtensionContext): void {
     resourcesTree.refresh();
     principalsTree.refresh();
     machinesTree.refresh();
+    homesTree.refresh();
   }
 
   /**
@@ -439,6 +449,7 @@ export function activate(context: vscode.ExtensionContext): void {
     resourcesView,
     principalsView,
     machinesView,
+    homesView,
     poller,
     poller.onDidUpdate(() => operatorsTree.refresh()),
     profiles.onDidChange(() => {
@@ -725,6 +736,23 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
 
     // Pending machines: approve (always through a comparison) or deny.
+    vscode.commands.registerCommand("airdress.homes.refresh", () => {
+      homesTree.refresh();
+    }),
+    // A Home's manifest, as the Resources view opens any resource.
+    vscode.commands.registerCommand(
+      "airdress.homes.open",
+      async (node: HomeNode) => {
+        if (node?.type !== "home") {
+          return;
+        }
+        await vscode.commands.executeCommand("airdress.resources.open", {
+          type: "resource",
+          profile: node.profile,
+          resource: { kind: "Home", name: node.home.name },
+        });
+      },
+    ),
     vscode.commands.registerCommand("airdress.machines.refresh", () => {
       machinesTree.refresh();
     }),
@@ -984,6 +1012,21 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("airdress.dev.selectorState", () =>
         selector.state(),
       ),
+      // The Homes view as rendered: each row's label and description and
+      // its detail rows, so a script can read what the owner would see.
+      vscode.commands.registerCommand("airdress.dev.homesTree", async () => {
+        const render = (n: HomeNode) => {
+          const item = homesTree.getTreeItem(n);
+          return { label: item.label, description: item.description };
+        };
+        const top = await homesTree.getChildren();
+        return Promise.all(
+          top.map(async (n) => ({
+            ...render(n),
+            rows: (await homesTree.getChildren(n)).map(render),
+          })),
+        );
+      }),
       // Connect with the airdress pick answered by FQDN (the pick itself
       // is VS Code chrome no command can accept). The browser sign-in
       // still happens; only the list is pre-answered.

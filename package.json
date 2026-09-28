@@ -217,6 +217,16 @@
         "command": "airdress.machines.deny",
         "title": "Airdress: Deny Machine…",
         "icon": "$(close)"
+      },
+      {
+        "command": "airdress.homes.refresh",
+        "title": "Airdress: Refresh Homes",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "airdress.homes.open",
+        "title": "Airdress: Open Home Manifest",
+        "icon": "$(go-to-file)"
       }
     ],
     "viewsContainers": {
@@ -253,6 +263,11 @@
           "id": "airdress.machines",
           "name": "Pending Machines",
           "when": "airdress.principalsAvailable"
+        },
+        {
+          "id": "airdress.homes",
+          "name": "Homes",
+          "when": "airdress.principalsAvailable"
         }
       ]
     },
@@ -264,6 +279,10 @@
       {
         "view": "airdress.machines",
         "contents": "No machines are waiting for approval on the active airdress. A machine appears here after it starts enrolling, with the confirmation code it shows."
+      },
+      {
+        "view": "airdress.homes",
+        "contents": "No home hub is linked to the active airdress. A Home appears here once a Home Assistant machine is approved and linked as a Home — approve it in Pending Machines."
       }
     ],
     "menus": {
@@ -343,6 +362,10 @@
         {
           "command": "airdress.functions.refreshContext",
           "when": "airdress.inFunction"
+        },
+        {
+          "command": "airdress.homes.open",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -369,6 +392,11 @@
         {
           "command": "airdress.machines.refresh",
           "when": "view == airdress.machines",
+          "group": "navigation"
+        },
+        {
+          "command": "airdress.homes.refresh",
+          "when": "view == airdress.homes",
           "group": "navigation"
         }
       ],
@@ -457,6 +485,16 @@
           "command": "airdress.machines.deny",
           "when": "view == airdress.machines && viewItem == airdressPendingMachine",
           "group": "9_destructive@1"
+        },
+        {
+          "command": "airdress.homes.open",
+          "when": "view == airdress.homes && viewItem == airdressHome",
+          "group": "inline"
+        },
+        {
+          "command": "airdress.homes.open",
+          "when": "view == airdress.homes && viewItem == airdressHome",
+          "group": "navigation"
         }
       ],
       "explorer/context": [
