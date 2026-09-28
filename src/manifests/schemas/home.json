@@ -1,0 +1,324 @@
+{
+  "$id": "https://schemas.airdress.co/operator/Home/v1.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "A resource manifest applied to an Airdress operator.",
+  "properties": {
+    "apiVersion": {
+      "const": "airdress.co/v1alpha1"
+    },
+    "kind": {
+      "const": "Home"
+    },
+    "metadata": {
+      "description": "The `metadata` block of a manifest.",
+      "properties": {
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "description": "Accepted for k8s familiarity but ignored — every operator manages one airdress's resources (one namespace).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resourceVersion": {
+          "description": "Optimistic concurrency token. When present, apply is rejected with 409 if the stored row's `resource_version` doesn't match. When absent, last-writer-wins.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "spec": {
+      "additionalProperties": false,
+      "description": "A home hub linked to this airdress. Functions may operate and observe only what the hub shares, within this resource's ceiling, opt-ins and limits.",
+      "properties": {
+        "ceiling": {
+          "default": "mirror",
+          "description": "The most this airdress may use. \"mirror\" (the default) takes exactly what the hub shares; an explicit list can only narrow it.",
+          "oneOf": [
+            {
+              "description": "Exactly what the hub shares.",
+              "enum": [
+                "mirror"
+              ],
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "description": "At most these entities at these levels, and only as far as the hub also shares them.",
+              "properties": {
+                "explicit": {
+                  "items": {
+                    "additionalProperties": false,
+                    "description": "One entry of an explicit ceiling.",
+                    "properties": {
+                      "entity": {
+                        "description": "The entity.",
+                        "type": "string"
+                      },
+                      "level": {
+                        "description": "The most it may be used at.",
+                        "oneOf": [
+                          {
+                            "description": "Nothing.",
+                            "enum": [
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "description": "State, events and reads.",
+                            "enum": [
+                              "observe"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "description": "The entity's own domain's actions, and everything observe gives.",
+                            "enum": [
+                              "operate"
+                            ],
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "entity",
+                      "level"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "explicit"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "enabled": {
+          "default": true,
+          "description": "When false the hub's channel is refused and no function reaches it. Default true.",
+          "type": "boolean"
+        },
+        "events": {
+          "description": "Event entities the hub creates, which functions may fire with one of the listed types.",
+          "items": {
+            "additionalProperties": false,
+            "description": "One `spec.events` entry.",
+            "properties": {
+              "name": {
+                "description": "The event entity's name.",
+                "type": "string"
+              },
+              "types": {
+                "description": "The event types it may fire.",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "name",
+              "types"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "hub": {
+          "description": "The hub and how it connects. A closed set of variants; exactly one is given.",
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "description": "Home Assistant, running the Airdress integration, enrolled on this operator as a machine.",
+              "properties": {
+                "homeAssistant": {
+                  "additionalProperties": false,
+                  "description": "`spec.hub.homeAssistant`.",
+                  "properties": {
+                    "machine": {
+                      "description": "The id of the approved machine Home Assistant enrolled as (see `airdress-operator machines list`).",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "machine"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "homeAssistant"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "limits": {
+          "additionalProperties": false,
+          "default": {
+            "callsPerMinute": 3,
+            "emitsPerMinute": 10,
+            "observePerMinute": 20,
+            "readsPerMinute": 10
+          },
+          "description": "Per-minute limits for this Home, each at most the operator's ceiling. A request over a limit is refused, never queued.",
+          "properties": {
+            "callsPerMinute": {
+              "default": 3,
+              "description": "Operate calls a minute.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "emitsPerMinute": {
+              "default": 10,
+              "description": "Event-entity fires a minute.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "observePerMinute": {
+              "default": 20,
+              "description": "Observed events a minute; past it the newest state per entity wins.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "readsPerMinute": {
+              "default": 10,
+              "description": "State reads a minute.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "notify": {
+          "additionalProperties": false,
+          "default": {
+            "enabled": true,
+            "perDay": 200,
+            "perMinute": 3
+          },
+          "description": "Messages the hub sends to this Home's conversation in Airdress Chat. On by default; bounded per minute and per day.",
+          "properties": {
+            "enabled": {
+              "default": true,
+              "description": "Whether the hub's messages are accepted.",
+              "type": "boolean"
+            },
+            "perDay": {
+              "default": 200,
+              "description": "Messages a day.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "perMinute": {
+              "default": 3,
+              "description": "Messages a minute, with a burst of the same.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "observeAttributes": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": "Per observed entity, the attributes delivered with its state. An entity listed with no attributes delivers its state only; an entity not listed delivers no attributes.",
+          "type": "object"
+        },
+        "sensitive": {
+          "description": "Locks, alarm panels, and garage, door, gate, window or unclassified covers that functions may operate. Empty by default: operating any of them is refused. The hub keeps its own list, and both must allow an entity.",
+          "items": {
+            "additionalProperties": false,
+            "description": "One `spec.sensitive` entry.",
+            "properties": {
+              "allow": {
+                "description": "What is allowed. Only `operate`.",
+                "oneOf": [
+                  {
+                    "description": "Operating the entity. Observing never needed an opt-in.",
+                    "enum": [
+                      "operate"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "entity": {
+                "description": "A lock, an alarm panel or a cover.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "allow",
+              "entity"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trackers": {
+          "description": "Device trackers the hub creates for positions a function reports. At most one, and it is the owner's.",
+          "items": {
+            "additionalProperties": false,
+            "description": "One `spec.trackers` entry.",
+            "properties": {
+              "name": {
+                "description": "The tracker's name; the hub's entity is `device_tracker.airdress_<name>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "maxItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "hub"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "Airdress operator Home manifest",
+  "type": "object",
+  "x-airdress-operator-version": "v0.1.97"
+}

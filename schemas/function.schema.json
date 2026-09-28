@@ -85,6 +85,95 @@
           "default": {},
           "description": "Capabilities the owner grants this function. The bundle's manifest may request a subset; requesting anything outside this block fails the load. Omitting the block grants nothing.",
           "properties": {
+            "home": {
+              "description": "Linked homes the function may reach, one entry per Home, each limited to the listed actions, events, entities and trackers.",
+              "items": {
+                "additionalProperties": false,
+                "description": "One `spec.capabilities.home` entry: what the function may do to one `Home`. Every list is exact: no wildcards.",
+                "properties": {
+                  "emit": {
+                    "description": "The Home's event entities the function may fire, with these types.",
+                    "items": {
+                      "additionalProperties": false,
+                      "description": "One `emit` entry.",
+                      "properties": {
+                        "event": {
+                          "description": "The event entity's name, as the `Home` declares it.",
+                          "type": "string"
+                        },
+                        "types": {
+                          "description": "The event types the function may fire.",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "event",
+                        "types"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "home": {
+                    "description": "The Home resource's metadata.name.",
+                    "type": "string"
+                  },
+                  "observe": {
+                    "description": "Entities the function may read the state of, and receive observed changes of when bound to this Home as an event source.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "operate": {
+                    "description": "Actions the function may call, each on the listed entities only. An action must be a service of its targets' own domain (button.press on button.*).",
+                    "items": {
+                      "additionalProperties": false,
+                      "description": "One `operate` entry.",
+                      "properties": {
+                        "action": {
+                          "description": "`domain.service`, e.g. `button.press`.",
+                          "type": "string"
+                        },
+                        "targets": {
+                          "description": "Entities, e.g. `button.office_pc`.",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "targets"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "track": {
+                    "description": "The Home's trackers the function may report the owner's position to. Needs spec.events.locationToHome.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "home"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "http": {
               "additionalProperties": false,
               "description": "Outbound HTTP, limited to the listed hosts.",
@@ -493,6 +582,17 @@
               },
               "type": "array"
             },
+            "home": {
+              "description": "With source \"home\": the Home whose observed state changes and events the function receives. Required with that source, refused with any other.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "locationToHome": {
+              "description": "Allow an invocation that carries a location event to send it to a linked home: report the owner's position to a Home's tracker, or put it in a call's or an event's data. Default false. Only with source \"location\". Owner-applied consent: a promote never changes it.",
+              "type": "boolean"
+            },
             "locationToModels": {
               "description": "Allow an invocation that carries a location event to call a model through the llm world. Default false: such a call is refused by the host. Only with source \"location\". Owner-applied consent: a promote never changes it.",
               "type": "boolean"
@@ -512,6 +612,13 @@
                   "description": "Location events from the owner's own phone: zone transitions, one-shot fixes, and sharing and consent state. Binding this source is the owner's consent, given by the apply.",
                   "enum": [
                     "location"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "description": "State changes and events a linked Home observes, for the Home named in spec.events.home. Needs an observe grant on that Home.",
+                  "enum": [
+                    "home"
                   ],
                   "type": "string"
                 }
@@ -746,5 +853,5 @@
   ],
   "title": "Airdress operator Function manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.93"
+  "x-airdress-operator-version": "v0.1.97"
 }

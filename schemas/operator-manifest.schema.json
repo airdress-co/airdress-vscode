@@ -50,6 +50,15 @@
       "then": {
         "$ref": "./schedule.schema.json"
       }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "Home" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "$ref": "./home.schema.json"
+      }
     }
   ]
 }
