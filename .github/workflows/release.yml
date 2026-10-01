@@ -27,6 +27,7 @@ permissions:
 jobs:
   package:
     name: Package
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     # release-approval carries a required reviewer: every release run pauses
     # here until a human approves it in the Actions UI.
@@ -59,6 +60,7 @@ jobs:
     name: Publish to VS Code Marketplace
     if: inputs.registries != 'openvsx'
     needs: package
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     environment: marketplace-publish
     permissions:
@@ -80,6 +82,7 @@ jobs:
     name: Publish to Open VSX
     if: inputs.registries != 'marketplace'
     needs: package
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -99,6 +102,7 @@ jobs:
     # a release is re-attachable, not immutable, so this must not require both.
     if: inputs.registries != 'openvsx'
     needs: [package, marketplace]
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     permissions:
       contents: write
