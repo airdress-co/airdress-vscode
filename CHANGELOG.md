@@ -14,6 +14,14 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.9.0](https://github.com/airdress-co/airdress-vscode/compare/v0.8.0...v0.9.0) (2026-10-01)
+
+
+### Features
+
+* **functions:** the Functions SDK — types on +, notes, and the operator's quick fixes ([7f993b8](https://github.com/airdress-co/airdress-vscode/commit/7f993b878cd7cdee1c384e10afb77a229acb89f4))
+* **homes:** a Homes view — each linked hub, its channel, what it shares, its opt-ins and limits ([9c035c8](https://github.com/airdress-co/airdress-vscode/commit/9c035c82bb1fa6b8336d6e608b92b8dda713c4cb))
+
 ## [0.8.0](https://github.com/airdress-co/airdress-vscode/compare/v0.7.2...v0.8.0) (2026-09-27)
 
 
