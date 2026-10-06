@@ -59,6 +59,24 @@
       "then": {
         "$ref": "./home.schema.json"
       }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "ShellHost" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "$ref": "./shell-host.schema.json"
+      }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "Thing" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "$ref": "./thing.schema.json"
+      }
     }
   ]
 }

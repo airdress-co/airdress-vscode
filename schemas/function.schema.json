@@ -315,6 +315,36 @@
                 "object",
                 "null"
               ]
+            },
+            "things": {
+              "description": "Linked Things the function may send commands to, one entry per Thing, each limited to the listed commands. Applying asks Command of each Thing.",
+              "items": {
+                "additionalProperties": false,
+                "description": "One `spec.capabilities.things` entry: which declared commands a function may send one `Thing`. Exact names, no wildcards.",
+                "properties": {
+                  "commands": {
+                    "description": "The commands the function may send this Thing; each must be declared on it.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "thing": {
+                    "description": "The Thing resource's metadata.name.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "commands",
+                  "thing"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
             }
           },
           "type": "object"
@@ -621,7 +651,21 @@
                     "home"
                   ],
                   "type": "string"
+                },
+                {
+                  "description": "Events a linked Thing publishes under its own machine signature, for the Thing named in spec.events.thing. Applying asks Observe of that Thing.",
+                  "enum": [
+                    "thing"
+                  ],
+                  "type": "string"
                 }
+              ]
+            },
+            "thing": {
+              "description": "With source \"thing\": the Thing whose published events the function receives. Required with that source, refused with any other. Applying the function asks Observe of that Thing.",
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -853,5 +897,5 @@
   ],
   "title": "Airdress operator Function manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.97"
+  "x-airdress-operator-version": "v0.1.122"
 }

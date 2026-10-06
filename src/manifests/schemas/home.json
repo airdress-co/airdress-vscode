@@ -293,7 +293,7 @@
             "description": "One `spec.trackers` entry.",
             "properties": {
               "name": {
-                "description": "The tracker's name; the hub's entity is `device_tracker.airdress_<name>`.",
+                "description": "The tracker's name. Home Assistant names the entity from the linked airdress and this name: `device_tracker.<airdress>_<name>`.",
                 "type": "string"
               }
             },
@@ -320,5 +320,5 @@
   ],
   "title": "Airdress operator Home manifest",
   "type": "object",
-  "x-airdress-operator-version": "v0.1.97"
+  "x-airdress-operator-version": "v0.1.122"
 }

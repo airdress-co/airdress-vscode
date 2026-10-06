@@ -1,0 +1,176 @@
+{
+  "$id": "https://schemas.airdress.co/operator/Thing/v1.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "A resource manifest applied to an Airdress operator.",
+  "properties": {
+    "apiVersion": {
+      "const": "airdress.co/v1alpha1"
+    },
+    "kind": {
+      "const": "Thing"
+    },
+    "metadata": {
+      "description": "The `metadata` block of a manifest.",
+      "properties": {
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "description": "Accepted for k8s familiarity but ignored — every operator manages one airdress's resources (one namespace).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resourceVersion": {
+          "description": "Optimistic concurrency token. When present, apply is rejected with 409 if the stored row's `resource_version` doesn't match. When absent, last-writer-wins.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "spec": {
+      "additionalProperties": false,
+      "description": "A device linked to this airdress: it publishes the declared events under its own machine signature and takes the declared commands. The machine it names holds no grants.",
+      "properties": {
+        "channel": {
+          "additionalProperties": false,
+          "default": {},
+          "description": "How commands reach the thing. Mode defaults to held when commands are declared, otherwise off.",
+          "properties": {
+            "mode": {
+              "anyOf": [
+                {
+                  "description": "How commands reach a thing.",
+                  "oneOf": [
+                    {
+                      "description": "No channel.",
+                      "enum": [
+                        "off"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "description": "A held long-poll, rotated every 240 s.",
+                      "enum": [
+                        "held"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "description": "A device that sleeps: it polls with `wait: 0` when it wakes.",
+                      "enum": [
+                        "wake"
+                      ],
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`off`, `held` or `wake`. Absent: held with commands, else off."
+            }
+          },
+          "type": "object"
+        },
+        "commands": {
+          "description": "The commands a function may send this thing, each with its own per-minute limit.",
+          "items": {
+            "additionalProperties": false,
+            "description": "One `spec.commands` entry.",
+            "properties": {
+              "name": {
+                "description": "The command's name.",
+                "type": "string"
+              },
+              "perMinute": {
+                "default": 30,
+                "description": "Sends a minute, across every function.",
+                "format": "uint32",
+                "minimum": 1.0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "description": "When false every event is refused and no command reaches the thing. Default true.",
+          "type": "boolean"
+        },
+        "events": {
+          "additionalProperties": false,
+          "default": {
+            "maxBodyBytes": 4096,
+            "perMinute": 60,
+            "types": []
+          },
+          "description": "The events this thing may publish, and their limits.",
+          "properties": {
+            "maxBodyBytes": {
+              "default": 4096,
+              "description": "The largest events request body, in bytes. At most the operator's ceiling.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "perMinute": {
+              "default": 60,
+              "description": "Live events a minute (burst 20). Events more than 10 s old at receipt are backlog and have a separate budget of the operator's backlog multiplier times this (10 by default). At most the operator's ceiling.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "types": {
+              "default": [],
+              "description": "The event types the thing may publish; an undeclared type is refused per event. Each becomes the CloudEvent type dev.airdress.thing.<type>.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 32,
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "machine": {
+          "description": "The id of the approved machine this thing enrolled as (see `airdress-operator machines list`). One Thing per machine.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "machine"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "Airdress operator Thing manifest",
+  "type": "object",
+  "x-airdress-operator-version": "v0.1.122"
+}
