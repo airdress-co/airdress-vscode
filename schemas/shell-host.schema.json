@@ -1,0 +1,103 @@
+{
+  "$id": "https://schemas.airdress.co/operator/ShellHost/v1.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "A resource manifest applied to an Airdress operator.",
+  "properties": {
+    "apiVersion": {
+      "const": "airdress.co/v1alpha1"
+    },
+    "kind": {
+      "const": "ShellHost"
+    },
+    "metadata": {
+      "description": "The `metadata` block of a manifest.",
+      "properties": {
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "description": "Accepted for k8s familiarity but ignored — every operator manages one airdress's resources (one namespace).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resourceVersion": {
+          "description": "Optimistic concurrency token. When present, apply is rejected with 409 if the stored row's `resource_version` doesn't match. When absent, last-writer-wins.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "spec": {
+      "additionalProperties": false,
+      "description": "A person's own machine, running `airdress shell host`, reachable from that person's enrolled devices. What it may run is defined on the machine itself and reported in status; nothing here can name a program.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "When false every leg is closed and opens are refused. Sessions on the machine keep running. Default true.",
+          "type": "boolean"
+        },
+        "limits": {
+          "additionalProperties": false,
+          "default": {
+            "maxViewers": 4,
+            "opensPerMinute": 6
+          },
+          "description": "Per-host limits, within the operator's `[shells]` ceilings.",
+          "properties": {
+            "maxViewers": {
+              "default": 4,
+              "description": "Devices attached to one session at once, the typist included.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "opensPerMinute": {
+              "default": 6,
+              "description": "Opens a minute, per person, on this host.",
+              "format": "uint32",
+              "minimum": 1.0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "machine": {
+          "description": "The id of the approved machine (purpose shell-host). One ShellHost per machine. Immutable.",
+          "type": "string"
+        },
+        "principal": {
+          "description": "The principal id of the person whose host this is: whoever approved the machine. Only that person may open, watch or type into its sessions. Immutable.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "machine",
+        "principal"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "Airdress operator ShellHost manifest",
+  "type": "object",
+  "x-airdress-operator-version": "v0.1.122"
+}

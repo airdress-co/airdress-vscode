@@ -3,6 +3,8 @@ import functionKind from "./function.json";
 import home from "./home.json";
 import inferencePoolMember from "./inference-pool-member.json";
 import schedule from "./schedule.json";
+import shellHost from "./shell-host.json";
+import thing from "./thing.json";
 
 /**
  * Bundled per-kind JSON Schemas.
@@ -50,6 +52,14 @@ export function bundledSchemas(): KindSchema[] {
     {
       kind: "Schedule",
       schema: schedule as KindSchema["schema"],
+    },
+    {
+      kind: "ShellHost",
+      schema: shellHost as KindSchema["schema"],
+    },
+    {
+      kind: "Thing",
+      schema: thing as KindSchema["schema"],
     },
   ];
 }
