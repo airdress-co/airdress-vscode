@@ -2,6 +2,16 @@ import type { AuthMode } from "../profiles/model";
 import { AccountMismatchError, type AccountIdentity } from "./identity";
 import { SecretStore } from "./store";
 import {
+  discoverHubAuthServer,
+  getAuthServerChoice,
+  getHubClientId,
+  getHubUrl,
+  hubAuthConfig,
+  operatorResource,
+  type AuthServerChoice,
+  type HubAuthServer,
+} from "./hubAs";
+import {
   AuthConfig,
   CallbackRouter,
   getAuthConfig,
@@ -23,6 +33,14 @@ import {
  * - Nothing here ever writes to settings.json, workspace state, or any
  *   workspace file.
  * - Nothing is logged: no token, no fragment of one, at any level.
+ *
+ * Two authorization servers. A profile signed in since
+ * the extension moved to the hub holds a grant at the hub's server and
+ * one access token PER RESOURCE (RFC 8707): the hub API, and each
+ * operator under `https://<fqdn>/v1`. A profile signed in before that
+ * holds a ZITADEL refresh token and one token for everything, and keeps
+ * working until it next signs in. SecretStorage records which
+ * (`SecretStore.getServer`).
  */
 
 /** Clock-skew margin: treat a token as expired this long before it is. */
@@ -32,7 +50,21 @@ const EXPIRY_SKEW_MS = 30_000;
 export interface AuthTarget {
   id: string;
   authMode: AuthMode;
+  /**
+   * Who the token is for, at the hub's server: an operator, by the base
+   * URL its API client talks to. Absent: the hub's API. A ZITADEL profile
+   * has one token for both and ignores this.
+   */
+  audience?: { operatorBaseUrl: string };
 }
+
+/** Map key for an access token: a profile, and the resource it is for. */
+function tokenKey(profileId: string, resource: string): string {
+  return `${profileId}\u0000${resource}`;
+}
+
+/** ZITADEL profiles hold one token, under the empty resource. */
+const ZITADEL_RESOURCE = "";
 
 /**
  * What the last thing that touched a profile's credential learned.
@@ -53,13 +85,29 @@ interface Deps {
   refreshFn: typeof refreshGrant;
   signInFn: typeof zitadelSignIn;
   getConfig: () => AuthConfig;
+  /** Which server a NEW sign-in uses (`airdress.auth.server`). */
+  serverChoice: () => AuthServerChoice;
+  /** The hub's authorization server, or undefined if the hub has none. */
+  discoverHub: () => Promise<HubAuthServer | undefined>;
+  hubClientId: () => string;
 }
 
 export class AuthManager {
-  /** Access tokens — MEMORY ONLY, keyed by profile id (FR-22). */
+  /** Access tokens — MEMORY ONLY, keyed by profile and resource (FR-22). */
   private readonly accessTokens = new Map<string, TokenSet>();
-  /** The one refresh exchange in flight per profile, if any. */
+  /** The account each profile's credential belongs to, from sign-in. */
+  private readonly identities = new Map<string, AccountIdentity>();
+  /** The one refresh exchange in flight per profile and resource. */
   private readonly refreshing = new Map<string, Promise<string | undefined>>();
+  /**
+   * The tail of each profile's chain of hub refreshes. The hub rotates the
+   * refresh token on every use and revokes the whole grant when an old one
+   * comes back, so two resources of one profile are never refreshed at
+   * once (the CLI holds a lock for the same reason).
+   */
+  private readonly chains = new Map<string, Promise<unknown>>();
+  /** Discovery of the hub's server, once per extension host. */
+  private hubServer?: Promise<HubAuthServer | undefined>;
   private readonly deps: Deps;
   /** Last reported outcome per profile — what the selector shows. */
   private readonly outcomes = new Map<string, CredentialOutcome>();
@@ -73,7 +121,31 @@ export class AuthManager {
       refreshFn: deps?.refreshFn ?? refreshGrant,
       signInFn: deps?.signInFn ?? zitadelSignIn,
       getConfig: deps?.getConfig ?? getAuthConfig,
+      serverChoice: deps?.serverChoice ?? getAuthServerChoice,
+      discoverHub:
+        deps?.discoverHub ?? (() => discoverHubAuthServer(getHubUrl())),
+      hubClientId: deps?.hubClientId ?? getHubClientId,
     };
+  }
+
+  /** The hub's server, discovered once; a failed discovery is retried. */
+  private discoverHub(): Promise<HubAuthServer | undefined> {
+    if (!this.hubServer) {
+      this.hubServer = this.deps.discoverHub().catch((err: unknown) => {
+        this.hubServer = undefined;
+        throw err;
+      });
+    }
+    return this.hubServer;
+  }
+
+  /** Every cached access token of a profile goes. */
+  private dropTokens(profileId: string): void {
+    for (const key of [...this.accessTokens.keys()]) {
+      if (key.startsWith(`${profileId}\u0000`)) {
+        this.accessTokens.delete(key);
+      }
+    }
   }
 
   /**
@@ -85,11 +157,34 @@ export class AuthManager {
     router: CallbackRouter,
     options: SignInOptions = {},
   ): Promise<void> {
-    const tokens = await this.deps.signInFn(router, options);
-    this.accessTokens.set(profileId, tokens);
+    // The hub's server when it has one and the setting allows it; an
+    // unreachable hub throws rather than quietly signing in elsewhere.
+    const hub =
+      this.deps.serverChoice() === "hub" ? await this.discoverHub() : undefined;
+    let tokens: TokenSet;
+    let resource: string;
+    if (hub) {
+      // The first token is for the hub's API: connecting an airdress
+      // lists them there. Operator tokens follow from the same grant.
+      resource = hub.hubResource;
+      tokens = await this.deps.signInFn(
+        router,
+        options,
+        hubAuthConfig(hub, this.deps.hubClientId(), resource),
+      );
+    } else {
+      resource = ZITADEL_RESOURCE;
+      tokens = await this.deps.signInFn(router, options);
+    }
+    this.dropTokens(profileId);
+    this.accessTokens.set(tokenKey(profileId, resource), tokens);
+    if (tokens.identity) {
+      this.identities.set(profileId, tokens.identity);
+    }
     if (tokens.refreshToken) {
       await this.secrets.setRefreshToken(profileId, tokens.refreshToken);
     }
+    await this.secrets.setServer(profileId, hub ? "hub" : "zitadel");
     this.report(profileId, "ok");
   }
 
@@ -110,7 +205,7 @@ export class AuthManager {
    * token. Callers persist it onto the profile as the binding.
    */
   identityFor(profileId: string): AccountIdentity | undefined {
-    return this.accessTokens.get(profileId)?.identity;
+    return this.identities.get(profileId);
   }
 
   /** The last reported outcome for a profile; `unknown` until one is. */
@@ -120,7 +215,7 @@ export class AuthManager {
 
   /** The API client saw a 401 on this profile's bearer. */
   reportUnauthorized(profileId: string): void {
-    this.accessTokens.delete(profileId);
+    this.dropTokens(profileId);
     this.report(profileId, "unauthorized");
   }
 
@@ -159,47 +254,95 @@ export class AuthManager {
       return bearer;
     }
 
-    const cached = this.accessTokens.get(target.id);
+    const server = await this.secrets.getServer(target.id);
+    let hub: HubAuthServer | undefined;
+    let resource = ZITADEL_RESOURCE;
+    if (server === "hub") {
+      try {
+        hub = await this.discoverHub();
+      } catch {
+        hub = undefined;
+      }
+      if (!hub) {
+        // A hub grant with no hub to renew it at: say so, do not guess.
+        this.report(target.id, "no-credential");
+        return undefined;
+      }
+      resource = target.audience
+        ? operatorResource(target.audience.operatorBaseUrl)
+        : hub.hubResource;
+    }
+    const key = tokenKey(target.id, resource);
+
+    const cached = this.accessTokens.get(key);
     if (cached && cached.expiresAt - EXPIRY_SKEW_MS > Date.now()) {
       return cached.accessToken;
     }
 
-    // ONE refresh in flight per profile. After a window reload the three
-    // tree views and any open panel all ask at once, each finds no cached
-    // token, and each would spend the SAME refresh token. ZITADEL rotates
-    // refresh tokens on use, so only the first exchange can succeed and
-    // the rest fail as reuse — which, with the failure swallowed below,
-    // reads as "no credential" for a profile whose secret is still there.
-    // Measured 2026-09-13 on the dev host: signed in, three reloads, dead.
-    const inflight = this.refreshing.get(target.id);
+    // ONE refresh in flight per profile and resource. After a window
+    // reload the three tree views and any open panel all ask at once,
+    // each finds no cached token, and each would spend the SAME refresh
+    // token. Both servers rotate refresh tokens on use, so only the first
+    // exchange can succeed and the rest fail as reuse — which, with the
+    // failure swallowed below, reads as "no credential" for a profile
+    // whose secret is still there. Measured 2026-09-13 on the dev host:
+    // signed in, three reloads, dead.
+    const inflight = this.refreshing.get(key);
     if (inflight) {
       return inflight;
     }
-    const refresh = this.refreshOnce(target.id).finally(() => {
-      this.refreshing.delete(target.id);
-    });
-    this.refreshing.set(target.id, refresh);
+    const run = (): Promise<string | undefined> =>
+      this.refreshOnce(target.id, key, hub, resource);
+    // At the hub, different resources of one profile also share the one
+    // rotating refresh token: queue them behind each other.
+    const previous = this.chains.get(target.id) ?? Promise.resolve();
+    const refresh = previous
+      .catch(() => undefined)
+      .then(run)
+      .finally(() => {
+        this.refreshing.delete(key);
+      });
+    this.chains.set(target.id, refresh);
+    this.refreshing.set(key, refresh);
     return refresh;
   }
 
-  private async refreshOnce(profileId: string): Promise<string | undefined> {
+  private async refreshOnce(
+    profileId: string,
+    key: string,
+    hub: HubAuthServer | undefined,
+    resource: string,
+  ): Promise<string | undefined> {
+    // Queued behind another refresh of this resource that already
+    // finished: use what it left.
+    const cached = this.accessTokens.get(key);
+    if (cached && cached.expiresAt - EXPIRY_SKEW_MS > Date.now()) {
+      return cached.accessToken;
+    }
     const refreshToken = await this.secrets.getRefreshToken(profileId);
     if (!refreshToken) {
       this.report(profileId, "no-credential");
       return undefined;
     }
+    const config = hub
+      ? hubAuthConfig(hub, this.deps.hubClientId(), resource)
+      : this.deps.getConfig();
     let tokens: TokenSet;
     try {
-      tokens = await this.deps.refreshFn(this.deps.getConfig(), refreshToken);
+      tokens = await this.deps.refreshFn(config, refreshToken);
     } catch {
-      // Refresh failed (expired/revoked). The outcome is REPORTED — it
-      // used to be swallowed, and a profile with a dead refresh token
-      // read as signed in until a request failed. Callers still surface
-      // at most one re-auth prompt per profile (design §9).
+      // Refresh failed (expired/revoked, or at the hub a resource this
+      // account may not have). The outcome is REPORTED — it used to be
+      // swallowed, and a profile with a dead refresh token read as
+      // signed in until a request failed. Callers still surface at most
+      // one re-auth prompt per profile (design §9).
       this.report(profileId, "no-credential");
       return undefined;
     }
-    this.accessTokens.set(profileId, tokens);
+    this.accessTokens.set(key, tokens);
+    if (tokens.identity && !this.identities.has(profileId)) {
+      this.identities.set(profileId, tokens.identity);
+    }
     if (tokens.refreshToken && tokens.refreshToken !== refreshToken) {
       await this.secrets.setRefreshToken(profileId, tokens.refreshToken);
     }
@@ -212,8 +355,9 @@ export class AuthManager {
     if (target.authMode === "bearer") {
       return (await this.secrets.getBearer(target.id)) !== undefined;
     }
+    const prefix = `${target.id}\u0000`;
     return (
-      this.accessTokens.has(target.id) ||
+      [...this.accessTokens.keys()].some((k) => k.startsWith(prefix)) ||
       (await this.secrets.getRefreshToken(target.id)) !== undefined
     );
   }
@@ -229,9 +373,12 @@ export class AuthManager {
     toId: string,
     expected?: AccountIdentity,
   ): Promise<void> {
-    const tokens = this.accessTokens.get(fromId);
+    const fromPrefix = `${fromId}\u0000`;
+    const tokens = [...this.accessTokens.entries()].filter(([k]) =>
+      k.startsWith(fromPrefix),
+    );
     const refreshToken = await this.secrets.getRefreshToken(fromId);
-    if (!tokens && !refreshToken) {
+    if (tokens.length === 0 && !refreshToken) {
       throw new Error("no credential to adopt");
     }
     // A profile bound to an account takes credentials for THAT account
@@ -239,24 +386,37 @@ export class AuthManager {
     // comes back is whatever was picked there, or whatever session the
     // browser already held. This is the check that makes the binding
     // real, and it happens before anything is written.
-    if (expected && tokens?.identity && tokens.identity.sub !== expected.sub) {
-      throw new AccountMismatchError(expected, tokens.identity);
+    const identity = this.identities.get(fromId);
+    if (expected && identity && identity.sub !== expected.sub) {
+      throw new AccountMismatchError(expected, identity);
     }
-    this.accessTokens.delete(toId);
-    this.refreshing.delete(toId);
-    if (tokens) {
-      this.accessTokens.set(toId, tokens);
+    const server = await this.secrets.getServer(fromId);
+    this.dropTokens(toId);
+    for (const [k] of [...this.refreshing.entries()]) {
+      if (k.startsWith(`${toId}\u0000`)) {
+        this.refreshing.delete(k);
+      }
+    }
+    this.chains.delete(toId);
+    for (const [k, v] of tokens) {
+      this.accessTokens.set(tokenKey(toId, k.slice(fromPrefix.length)), v);
+    }
+    if (identity) {
+      this.identities.set(toId, identity);
     }
     if (refreshToken) {
       await this.secrets.setRefreshToken(toId, refreshToken);
     }
+    await this.secrets.setServer(toId, server);
     await this.signOut(fromId);
     this.report(toId, "ok");
   }
 
   /** Sign out: drop the in-memory token and every stored secret. */
   async signOut(profileId: string): Promise<void> {
-    this.accessTokens.delete(profileId);
+    this.dropTokens(profileId);
+    this.identities.delete(profileId);
+    this.chains.delete(profileId);
     await this.secrets.clearProfile(profileId);
     this.outcomes.delete(profileId);
     for (const listener of this.listeners) {

@@ -4,6 +4,13 @@
 
 ### Features
 
+- Sign-in goes through the hub's own authorization server (`airdress.auth.server`,
+  default `hub`), as the CLI's `?v=2` does: one sign-in, then a token per
+  resource — the hub API, and each operator under `https://<fqdn>/v1`. ZITADEL
+  is reached only when you sign in, not on every refresh. Profiles signed in
+  to ZITADEL before keep working until they next sign in, and a hub that offers
+  no authorization server still gets the ZITADEL sign-in. The extension appears
+  as "Airdress for VS Code" on the consent screen and in Connected AI apps.
 - `Function` is a known kind: validated on apply, diffed against live, drift-scanned,
   rendered as known in the Resources view. Its schema is hand-seeded from
   the operator's contract until the operator publishes it.

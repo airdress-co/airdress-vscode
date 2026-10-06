@@ -72,6 +72,12 @@ export interface SignInOptions {
 }
 
 export interface AuthConfig {
+  /**
+   * Which authorization server: ZITADEL directly (the default, and every
+   * profile signed in before the move to the hub), or the hub's own (`hubAs.ts`),
+   * whose endpoints and per-resource tokens differ.
+   */
+  kind?: "zitadel" | "hub";
   issuer: string;
   clientId: string;
   /**
@@ -89,6 +95,14 @@ export interface AuthConfig {
    * only the interactive authorize hop is branded.
    */
   authorizeBase?: string;
+  /** RFC 8414 endpoints, when the server published them (the hub's). */
+  authorizationEndpoint?: string;
+  tokenEndpoint?: string;
+  /**
+   * RFC 8707 resource the token is for (the hub's server only): the hub
+   * API, or one operator's `https://<fqdn>/v1`.
+   */
+  resource?: string;
 }
 
 /** Read the auth configuration, falling back to the shipped defaults. */
@@ -124,9 +138,11 @@ export function buildAuthorizeUrl(
   codeChallenge: string,
   options: SignInOptions = {},
 ): string {
-  const url = cfg.authorizeBase
-    ? new URL(cfg.authorizeBase)
-    : new URL("/oauth/v2/authorize", cfg.issuer);
+  const url = cfg.authorizationEndpoint
+    ? new URL(cfg.authorizationEndpoint)
+    : cfg.authorizeBase
+      ? new URL(cfg.authorizeBase)
+      : new URL("/oauth/v2/authorize", cfg.issuer);
   url.searchParams.set("client_id", cfg.clientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
@@ -139,6 +155,9 @@ export function buildAuthorizeUrl(
   }
   if (options.loginHint) {
     url.searchParams.set("login_hint", options.loginHint);
+  }
+  if (cfg.resource) {
+    url.searchParams.set("resource", cfg.resource);
   }
   return url.toString();
 }
@@ -270,11 +289,18 @@ interface TokenEndpointResponse {
   error_description?: string;
 }
 
+/** The token endpoint: published (the hub's), else ZITADEL's path. */
+export function tokenEndpointOf(cfg: AuthConfig): URL {
+  return cfg.tokenEndpoint
+    ? new URL(cfg.tokenEndpoint)
+    : new URL("/oauth/v2/token", cfg.issuer);
+}
+
 async function postTokenEndpoint(
-  issuer: string,
+  cfg: AuthConfig,
   body: URLSearchParams,
 ): Promise<TokenSet> {
-  const url = new URL("/oauth/v2/token", issuer);
+  const url = tokenEndpointOf(cfg);
   const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -301,7 +327,13 @@ async function postTokenEndpoint(
     accessToken: payload.access_token,
     refreshToken: payload.refresh_token,
     expiresAt: Date.now() + (payload.expires_in ?? 300) * 1000,
-    identity: identityFromIdToken(payload.id_token),
+    // The hub's server is not an OIDC provider and returns no id token;
+    // its access token carries the same upstream `sub` the id token did,
+    // which is all the binding compares (identity.ts).
+    identity: identityFromIdToken(
+      payload.id_token ??
+        (cfg.kind === "hub" ? payload.access_token : undefined),
+    ),
   };
 }
 
@@ -312,32 +344,41 @@ export async function exchangeCode(
   codeVerifier: string,
   redirectUri: string,
 ): Promise<TokenSet> {
-  return postTokenEndpoint(
-    cfg.issuer,
-    new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: cfg.clientId,
-      code,
-      code_verifier: codeVerifier,
-      redirect_uri: redirectUri,
-    }),
-  );
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: cfg.clientId,
+    code,
+    code_verifier: codeVerifier,
+    redirect_uri: redirectUri,
+  });
+  if (cfg.resource) {
+    body.set("resource", cfg.resource);
+  }
+  return postTokenEndpoint(cfg, body);
 }
 
-/** Silent refresh via the refresh-token grant. */
+/**
+ * Silent refresh via the refresh-token grant. At the hub's server this is
+ * also how a token for another resource is obtained: the same grant, a
+ * different `resource` (RFC 8707 §2.2).
+ */
 export async function refresh(
   cfg: AuthConfig,
   refreshToken: string,
 ): Promise<TokenSet> {
-  return postTokenEndpoint(
-    cfg.issuer,
-    new URLSearchParams({
-      grant_type: "refresh_token",
-      client_id: cfg.clientId,
-      refresh_token: refreshToken,
-      scope: cfg.scopes,
-    }),
-  );
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    client_id: cfg.clientId,
+    refresh_token: refreshToken,
+  });
+  if (cfg.kind === "hub") {
+    if (cfg.resource) {
+      body.set("resource", cfg.resource);
+    }
+  } else {
+    body.set("scope", cfg.scopes);
+  }
+  return postTokenEndpoint(cfg, body);
 }
 
 /** Minimal page shown in the browser tab after the loopback redirect. */
@@ -465,8 +506,9 @@ export function selectRoute(
 export async function signIn(
   router: CallbackRouter,
   options: SignInOptions = {},
+  config?: AuthConfig,
 ): Promise<TokenSet> {
-  const cfg = getAuthConfig();
+  const cfg = config ?? getAuthConfig();
 
   const route = vscode.workspace
     .getConfiguration("airdress.auth")
