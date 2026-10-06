@@ -552,10 +552,28 @@
     "configuration": {
       "title": "Airdress",
       "properties": {
+        "airdress.auth.server": {
+          "type": "string",
+          "enum": [
+            "hub",
+            "zitadel"
+          ],
+          "enumDescriptions": [
+            "Sign in through the hub's authorization server (airdress.hub.url), which reaches ZITADEL only when you sign in.",
+            "Sign in to ZITADEL directly (airdress.auth.issuer), as releases before 0.8 did."
+          ],
+          "default": "hub",
+          "description": "Where a new sign-in goes. A profile keeps the server it signed in with until it signs in again; a hub that offers no authorization server falls back to ZITADEL."
+        },
+        "airdress.auth.hubClientId": {
+          "type": "string",
+          "default": "airdress-vscode",
+          "description": "This extension's client ID at the hub's authorization server (public, PKCE only)."
+        },
         "airdress.auth.issuer": {
           "type": "string",
           "default": "https://airdress-co-tffhig.us1.zitadel.cloud",
-          "description": "ZITADEL issuer URL for OIDC sign-in."
+          "description": "ZITADEL issuer URL, used when airdress.auth.server is zitadel and by profiles signed in that way."
         },
         "airdress.auth.clientId": {
           "type": "string",

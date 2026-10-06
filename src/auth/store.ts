@@ -4,7 +4,10 @@ import * as vscode from "vscode";
  * SecretStorage wrapper — the ONLY module that touches secrets.
  *
  * Keys:
- *   airdress.profile.<id>.refresh  — ZITADEL refresh token
+ *   airdress.profile.<id>.refresh  — refresh token (ZITADEL's or the hub's)
+ *   airdress.profile.<id>.server   — which server issued it: `hub`, or
+ *                                    absent for ZITADEL (every profile
+ *                                    signed in before the move to the hub)
  *   airdress.profile.<id>.bearer   — opaque operator bearer
  *
  * Access tokens live in memory for the extension-host lifetime only and
@@ -21,6 +24,20 @@ export class SecretStore {
     await this.secrets.store(`airdress.profile.${profileId}.refresh`, token);
   }
 
+  /** Which authorization server issued the stored refresh token. */
+  async getServer(profileId: string): Promise<"hub" | "zitadel"> {
+    const v = await this.secrets.get(`airdress.profile.${profileId}.server`);
+    return v === "hub" ? "hub" : "zitadel";
+  }
+
+  async setServer(profileId: string, server: "hub" | "zitadel"): Promise<void> {
+    if (server === "hub") {
+      await this.secrets.store(`airdress.profile.${profileId}.server`, "hub");
+    } else {
+      await this.secrets.delete(`airdress.profile.${profileId}.server`);
+    }
+  }
+
   async getBearer(profileId: string): Promise<string | undefined> {
     return this.secrets.get(`airdress.profile.${profileId}.bearer`);
   }
@@ -33,5 +50,6 @@ export class SecretStore {
   async clearProfile(profileId: string): Promise<void> {
     await this.secrets.delete(`airdress.profile.${profileId}.refresh`);
     await this.secrets.delete(`airdress.profile.${profileId}.bearer`);
+    await this.secrets.delete(`airdress.profile.${profileId}.server`);
   }
 }

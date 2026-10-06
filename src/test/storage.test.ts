@@ -101,6 +101,7 @@ suite("AuthManager (T6-02)", () => {
   test("access tokens are memory-only; refresh token is the only persisted credential", async () => {
     const backing = new FakeSecretStorage();
     const manager = new AuthManager(new SecretStore(backing), {
+      serverChoice: () => "zitadel",
       signInFn: async () => tokenSet(),
       getConfig: () => cfg,
     });
@@ -119,6 +120,7 @@ suite("AuthManager (T6-02)", () => {
   test("a valid in-memory access token is served without a refresh", async () => {
     let refreshCalls = 0;
     const manager = new AuthManager(new SecretStore(new FakeSecretStorage()), {
+      serverChoice: () => "zitadel",
       signInFn: async () => tokenSet(),
       refreshFn: async () => {
         refreshCalls++;
@@ -138,6 +140,7 @@ suite("AuthManager (T6-02)", () => {
   test("restart re-derives the access token from the refresh token with no prompt", async () => {
     const backing = new FakeSecretStorage();
     const first = new AuthManager(new SecretStore(backing), {
+      serverChoice: () => "zitadel",
       signInFn: async () => tokenSet(),
       getConfig: () => cfg,
     });
@@ -148,6 +151,7 @@ suite("AuthManager (T6-02)", () => {
     // the day, this test fails rather than prompting.
     let refreshedWith: string | undefined;
     const second = new AuthManager(new SecretStore(backing), {
+      serverChoice: () => "zitadel",
       refreshFn: async (_cfg, refreshToken) => {
         refreshedWith = refreshToken;
         return tokenSet({ accessToken: "access-2", refreshToken: "refresh-2" });
@@ -170,6 +174,7 @@ suite("AuthManager (T6-02)", () => {
   test("concurrent callers after a restart share ONE refresh — a rotating issuer would kill the family otherwise", async () => {
     const backing = new FakeSecretStorage();
     const first = new AuthManager(new SecretStore(backing), {
+      serverChoice: () => "zitadel",
       signInFn: async () => tokenSet(),
       getConfig: () => cfg,
     });
@@ -182,6 +187,7 @@ suite("AuthManager (T6-02)", () => {
     const spent = new Set<string>();
     let exchanges = 0;
     const second = new AuthManager(new SecretStore(backing), {
+      serverChoice: () => "zitadel",
       refreshFn: async (_cfg, refreshToken) => {
         exchanges += 1;
         await new Promise((r) => setTimeout(r, 5));
@@ -219,6 +225,7 @@ suite("AuthManager (T6-02)", () => {
   test("adoptCredential moves a candidate's tokens onto an existing profile and leaves nothing behind", async () => {
     const backing = new FakeSecretStorage();
     const manager = new AuthManager(new SecretStore(backing), {
+      serverChoice: () => "zitadel",
       signInFn: async () =>
         tokenSet({ accessToken: "access-new", refreshToken: "refresh-new" }),
       refreshFn: async () => {
@@ -257,6 +264,7 @@ suite("AuthManager (T6-02)", () => {
     const seen: Array<[string, string]> = [];
     let refreshOk = true;
     const manager = new AuthManager(new SecretStore(backing), {
+      serverChoice: () => "zitadel",
       signInFn: async () => tokenSet({ expiresAt: Date.now() - 1 }),
       refreshFn: async () => {
         if (!refreshOk) {
@@ -316,6 +324,7 @@ suite("AuthManager (T6-02)", () => {
     const backing = new FakeSecretStorage();
     let refreshCalls = 0;
     const manager = new AuthManager(new SecretStore(backing), {
+      serverChoice: () => "zitadel",
       signInFn: async () => tokenSet({ expiresAt: Date.now() - 1000 }),
       refreshFn: async () => {
         refreshCalls++;
@@ -336,6 +345,7 @@ suite("AuthManager (T6-02)", () => {
     const store = new SecretStore(backing);
     await store.setRefreshToken("p1", "expired");
     const manager = new AuthManager(store, {
+      serverChoice: () => "zitadel",
       refreshFn: async () => {
         throw new Error("invalid_grant");
       },
@@ -360,6 +370,7 @@ suite("AuthManager (T6-02)", () => {
   test("signOut clears memory and every stored secret", async () => {
     const backing = new FakeSecretStorage();
     const manager = new AuthManager(new SecretStore(backing), {
+      serverChoice: () => "zitadel",
       signInFn: async () => tokenSet(),
       getConfig: () => cfg,
     });

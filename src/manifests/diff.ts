@@ -25,8 +25,13 @@ export function clientFor(deps: ManifestDeps, profile: Profile): ApiClient {
   const cfg = vscode.workspace.getConfiguration("airdress");
   return new ApiClient({
     baseUrl: baseUrlFor(profile),
+    // At the hub's server a token is for one resource: this operator's.
     getToken: () =>
-      deps.auth.getAccessToken({ id: profile.id, authMode: profile.authMode }),
+      deps.auth.getAccessToken({
+        id: profile.id,
+        authMode: profile.authMode,
+        audience: { operatorBaseUrl: baseUrlFor(profile) },
+      }),
     timeoutMs: cfg.get<number>("requestTimeoutMs", 15_000),
     traceHeader: cfg.get<boolean>("telemetry.traceHeader", false),
     fetchFn: deps.fetchFn,

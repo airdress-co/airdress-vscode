@@ -131,6 +131,7 @@ function managerWith(identity?: { sub: string; label?: string }): AuthManager {
     new FakeSecrets() as unknown as import("vscode").SecretStorage,
   );
   return new AuthManager(secrets, {
+    serverChoice: () => "zitadel",
     signInFn: async () => ({
       accessToken: "an-access-token",
       refreshToken: "a-refresh-token",
