@@ -295,6 +295,10 @@ export async function connectAirdress(deps: ConnectDeps): Promise<void> {
     await deps.signIn(candidateId);
   } catch (err) {
     await deps.discard(candidateId);
+    // Cancelled from the progress notification: a decision, not a failure.
+    if (err instanceof Error && err.name === "SignInCancelledError") {
+      return;
+    }
     deps.ui.error(
       `Airdress: sign-in failed — ${
         err instanceof Error ? err.message : String(err)

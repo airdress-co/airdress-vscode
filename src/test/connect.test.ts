@@ -396,6 +396,36 @@ function flowHarness(overrides: {
 }
 
 suite("connect flow", () => {
+  test("a sign-in cancelled from its notification says nothing and creates nothing", async () => {
+    const cancelled = Object.assign(new Error("Sign-in cancelled."), {
+      name: "SignInCancelledError",
+    });
+    const { deps, store, log } = flowHarness({
+      signIn: async () => {
+        throw cancelled;
+      },
+    });
+    await connectAirdress(deps);
+    assert.strictEqual(store.list().length, 0);
+    assert.deepStrictEqual(log.errors, [], "a cancel is not an error");
+    assert.strictEqual(
+      log.discarded.length,
+      1,
+      "the candidate is still discarded",
+    );
+  });
+
+  test("a sign-in that really failed is still reported", async () => {
+    const { deps, log } = flowHarness({
+      signIn: async () => {
+        throw new Error("Token request failed: invalid_grant");
+      },
+    });
+    await connectAirdress(deps);
+    assert.strictEqual(log.errors.length, 1);
+    assert.ok(log.errors[0].includes("invalid_grant"));
+  });
+
   const reject = (status: number): typeof fetch =>
     (async () =>
       ({

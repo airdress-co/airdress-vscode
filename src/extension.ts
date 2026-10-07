@@ -25,7 +25,11 @@ import { addOpenFileToMapping, detectWorkspaceDrift } from "./drift/commands";
 import { AIRDRESS_SCHEME, LiveManifestProvider } from "./manifests/virtual";
 import { diffAgainstLive, type ManifestDeps } from "./manifests/diff";
 import { applyManifest, validateCommand } from "./manifests/apply";
-import { CallbackRouter, type SignInOptions } from "./auth/zitadel";
+import {
+  SignInCancelledError,
+  CallbackRouter,
+  type SignInOptions,
+} from "./auth/zitadel";
 import { AccountMismatchError, identityText } from "./auth/identity";
 import { SecretStore } from "./auth/store";
 import { AuthManager } from "./auth/manager";
@@ -502,6 +506,9 @@ export function activate(context: vscode.ExtensionContext): void {
           }
         }
       } catch (err) {
+        if (err instanceof SignInCancelledError) {
+          return;
+        }
         void vscode.window.showErrorMessage(
           `Airdress: sign-in for ${profile.label} failed — ${
             err instanceof Error ? err.message : String(err)
@@ -597,6 +604,9 @@ export function activate(context: vscode.ExtensionContext): void {
           );
           refreshAllViews();
         } catch (err) {
+          if (err instanceof SignInCancelledError) {
+            return;
+          }
           void vscode.window.showErrorMessage(
             `Airdress: sign-in for ${profile.label} failed — ${
               err instanceof Error ? err.message : String(err)
