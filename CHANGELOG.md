@@ -21,6 +21,18 @@
   existing manifest commands. Opened from a Function row's gear
   ("Airdress: Configure Function") or from "Airdress: New Function…".
 
+## [0.10.0](https://github.com/airdress-co/airdress-vscode/compare/v0.9.0...v0.10.0) (2026-10-07)
+
+
+### Features
+
+* **auth:** a cancellable progress notification while sign-in waits on the browser ([786a142](https://github.com/airdress-co/airdress-vscode/commit/786a142e17e30aa2e12076da8571c66608e62458))
+
+
+### Bug Fixes
+
+* **auth:** ask the hub for a grant over every owned airdress, not only its API ([fa61120](https://github.com/airdress-co/airdress-vscode/commit/fa61120a51aaf1a1cf35ee6cac8a838e2e1e43cd))
+
 ## [0.9.0](https://github.com/airdress-co/airdress-vscode/compare/v0.8.0...v0.9.0) (2026-10-06)
 
 
