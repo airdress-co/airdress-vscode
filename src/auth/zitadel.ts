@@ -156,7 +156,12 @@ export function buildAuthorizeUrl(
   if (options.loginHint) {
     url.searchParams.set("login_hint", options.loginHint);
   }
-  if (cfg.resource) {
+  // At the hub's server a first-party client names NO resource here: that
+  // is how it asks for one grant over the hub API and every airdress the
+  // person owns. Naming one would scope the whole grant to it, and every
+  // operator token would then be refused (found on the first real sign-in,
+  // 2026-10-07). The resource goes to the token endpoint instead.
+  if (cfg.resource && cfg.kind !== "hub") {
     url.searchParams.set("resource", cfg.resource);
   }
   return url.toString();

@@ -125,7 +125,7 @@ suite("hub authorization server: resources and the authorize URL", () => {
     );
   });
 
-  test("the authorize URL goes to the hub, names the resource, asks no ZITADEL scope", () => {
+  test("the authorize URL goes to the hub, names no resource, asks no ZITADEL scope", () => {
     const cfg = hubAuthConfig(SERVER, "airdress-vscode", SERVER.hubResource);
     const url = new URL(
       buildAuthorizeUrl(
@@ -140,7 +140,9 @@ suite("hub authorization server: resources and the authorize URL", () => {
       `${HUB}/oauth/authorize`,
     );
     assert.strictEqual(url.searchParams.get("client_id"), "airdress-vscode");
-    assert.strictEqual(url.searchParams.get("resource"), `${HUB}/api`);
+    // No resource at authorize: the grant covers the hub API and every
+    // owned airdress; each token names its resource at the token endpoint.
+    assert.strictEqual(url.searchParams.get("resource"), null);
     assert.strictEqual(url.searchParams.get("scope"), "offline_access");
   });
 });
