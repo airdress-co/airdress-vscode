@@ -268,6 +268,57 @@ export function externalUriTargetsUriHandler(
   );
 }
 
+/** The person cancelled the sign-in from its progress notification. */
+export class SignInCancelledError extends Error {
+  constructor() {
+    super("Sign-in cancelled.");
+    this.name = "SignInCancelledError";
+  }
+}
+
+/**
+ * The host a person finishes signing in at, for the progress notification
+ * (pure; unit-tested): the authorization endpoint's, else the branded
+ * entry's, else the issuer's.
+ */
+export function signInHost(cfg: AuthConfig): string {
+  const from = cfg.authorizationEndpoint ?? cfg.authorizeBase ?? cfg.issuer;
+  try {
+    return new URL(from).host;
+  } catch {
+    return from;
+  }
+}
+
+/** `p`, unless the person cancels first. */
+export function untilCancelled<T>(
+  p: Promise<T>,
+  token?: vscode.CancellationToken,
+): Promise<T> {
+  if (!token) {
+    return p;
+  }
+  if (token.isCancellationRequested) {
+    return Promise.reject(new SignInCancelledError());
+  }
+  return new Promise<T>((resolve, reject) => {
+    const sub = token.onCancellationRequested(() => {
+      sub.dispose();
+      reject(new SignInCancelledError());
+    });
+    p.then(
+      (v) => {
+        sub.dispose();
+        resolve(v);
+      },
+      (e: unknown) => {
+        sub.dispose();
+        reject(e);
+      },
+    );
+  });
+}
+
 /** The custom-scheme redirect never fired — offer the loopback retry. */
 export class UriHandlerTimeoutError extends Error {
   constructor() {
@@ -394,6 +445,7 @@ const LOOPBACK_RESPONSE_HTML =
 async function signInViaLoopback(
   cfg: AuthConfig,
   options: SignInOptions,
+  token?: vscode.CancellationToken,
 ): Promise<TokenSet> {
   const verifier = generateVerifier();
   const state = generateState();
@@ -438,7 +490,7 @@ async function signInViaLoopback(
     );
     await vscode.env.openExternal(vscode.Uri.parse(authorizeUrl));
 
-    const query = await queryPromise;
+    const query = await untilCancelled(queryPromise, token);
     const { code } = parseCallbackQuery(query, state);
     return await exchangeCode(cfg, code, verifier, redirectUri);
   } finally {
@@ -451,6 +503,7 @@ async function signInViaUriHandler(
   cfg: AuthConfig,
   router: CallbackRouter,
   options: SignInOptions,
+  token?: vscode.CancellationToken,
 ): Promise<TokenSet> {
   const verifier = generateVerifier();
   const state = generateState();
@@ -470,7 +523,10 @@ async function signInViaUriHandler(
   );
   await vscode.env.openExternal(vscode.Uri.parse(authorizeUrl));
 
-  const query = await router.waitFor(state, URI_HANDLER_TIMEOUT_MS);
+  const query = await untilCancelled(
+    router.waitFor(state, URI_HANDLER_TIMEOUT_MS),
+    token,
+  );
   const { code } = parseCallbackQuery(query, state);
   return exchangeCode(cfg, code, verifier, redirectUri);
 }
@@ -509,12 +565,30 @@ export async function signIn(
   config?: AuthConfig,
 ): Promise<TokenSet> {
   const cfg = config ?? getAuthConfig();
+  // The browser round trip takes as long as the person does. Say what is
+  // being waited for, and let them stop waiting: a silent wait read as a
+  // hang, and invited a second click (owner, 2026-10-07).
+  return vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Airdress: finish signing in in your browser (${signInHost(cfg)})…`,
+      cancellable: true,
+    },
+    (_progress, token) => runSignIn(router, options, cfg, token),
+  );
+}
 
+async function runSignIn(
+  router: CallbackRouter,
+  options: SignInOptions,
+  cfg: AuthConfig,
+  token: vscode.CancellationToken,
+): Promise<TokenSet> {
   const route = vscode.workspace
     .getConfiguration("airdress.auth")
     .get<string>("route", "auto");
   if (selectRoute(route, vscode.env.uriScheme) === "loopback") {
-    return signInViaLoopback(cfg, options);
+    return signInViaLoopback(cfg, options, token);
   }
 
   // asExternalUri as an environment PROBE only: when it rewrites the
@@ -525,11 +599,11 @@ export async function signIn(
     vscode.Uri.parse(registeredRedirectUri(vscode.env.uriScheme)),
   );
   if (!externalUriTargetsUriHandler(probe, vscode.env.uriScheme)) {
-    return signInViaLoopback(cfg, options);
+    return signInViaLoopback(cfg, options, token);
   }
 
   try {
-    return await signInViaUriHandler(cfg, router, options);
+    return await signInViaUriHandler(cfg, router, options, token);
   } catch (err) {
     if (err instanceof UriHandlerTimeoutError) {
       const retry = await vscode.window.showWarningMessage(
@@ -537,7 +611,7 @@ export async function signIn(
         "Retry via loopback",
       );
       if (retry === "Retry via loopback") {
-        return signInViaLoopback(cfg, options);
+        return signInViaLoopback(cfg, options, token);
       }
     }
     throw err;
