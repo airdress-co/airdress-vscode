@@ -24,6 +24,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: check-doc-numbers
+        name: document numbers stay out of code
+        entry: scripts/check-doc-numbers.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: no-internal-refs
         name: no internal spec/runbook references
         # This repo is public: internal process identifiers (spec, runbook,
